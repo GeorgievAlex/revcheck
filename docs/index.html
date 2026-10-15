@@ -32,19 +32,6 @@
       <p id="status" class="status" role="status" aria-live="polite"></p>
     </form>
 
-    <p id="reader-ok" class="muted small" hidden data-i18n="readerOk">✓ RevCheck Reader is installed.</p>
-    <details id="install" class="panel">
-      <summary data-i18n="installTitle">Install the RevCheck Reader extension (Chrome, Edge, Brave)</summary>
-      <p data-i18n="installWhy">mobile.bg and cars.bg block requests from cloud servers, so RevCheck reads the listings from your own browser. The extension only fetches mobile.bg and cars.bg listing and search pages when you click Compare, without your cookies. It's about 60 lines of code.</p>
-      <ol>
-        <li><a href="revcheck-reader.zip" data-i18n="step1">Download revcheck-reader.zip</a> <span data-i18n="step1b">and unzip it.</span></li>
-        <li data-i18n="step2">Open chrome://extensions and turn on Developer mode (top right).</li>
-        <li data-i18n="step3">Click "Load unpacked" and pick the unzipped folder.</li>
-        <li data-i18n="step4">Reload this page.</li>
-      </ol>
-      <p class="small"><a href="https://github.com/GeorgievAlex/revcheck/tree/main/extension" data-i18n="readCode">Read the extension's code</a></p>
-    </details>
-
     <section id="result" hidden>
       <article id="verdict" class="panel verdict"></article>
       <div class="cars">
@@ -54,7 +41,7 @@
     </section>
   </main>
   <footer class="site">
-    <p data-i18n="footer">Your browser reads the two listings and similar cars, then sends that data to a DigitalOcean Function, which passes the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
+    <p data-i18n="footer">The two links are sent to a DigitalOcean Function. It reads the public listings through a small Cloudflare Worker, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
     <p><a href="https://github.com/GeorgievAlex/revcheck">Source</a></p>
   </footer>
   <script type="module" src="theme.js"></script>

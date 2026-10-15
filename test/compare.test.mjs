@@ -2,9 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
-import * as L from "../docs/lib/listing.js";
-
 const require = createRequire(import.meta.url);
+const L = require("../packages/revcheck/compare/listing.js");
 const M = require("../packages/revcheck/compare/market.js");
 const F = require("../packages/revcheck/compare/index.js");
 const V = require("../packages/revcheck/compare/validate.js");
@@ -201,14 +200,58 @@ test("validate rejects bad cars", () => {
   assert.equal(V.cars([mobile, { ...goodCar("https://www.mobile.bg/obiava-2"), search_url: "https://evil.example" }])[1].search_url, null);
 });
 
+test("pageReader goes through the reader Worker with the secret, and decodes windows-1251", async () => {
+  let seen;
+  const fetchImpl = async (url, opts) => {
+    seen = { url, opts };
+    return { ok: true, headers: new Headers({ "content-type": "text/html; charset=windows-1251" }), arrayBuffer: async () => Uint8Array.from([0xcf, 0xf0, 0xee, 0xe1, 0xe5, 0xe3]).buffer };
+  };
+  const read = L.pageReader({ READER_URL: "https://reader.example", READER_SECRET: "s3cret" }, fetchImpl);
+  assert.equal(await read("https://www.mobile.bg/obiava-1"), "Пробег");
+  assert.equal(seen.url, "https://reader.example?url=https%3A%2F%2Fwww.mobile.bg%2Fobiava-1");
+  assert.equal(seen.opts.headers["X-Reader-Secret"], "s3cret");
+  const failing = L.pageReader({ READER_URL: "https://reader.example" }, async () => ({ ok: false, status: 403 }));
+  await assert.rejects(failing("https://www.mobile.bg/obiava-1"), /HTTP 403/);
+});
+
+test("gatherCar reads the listing and 3 filtered search pages, skipping itself", async () => {
+  const listingHtml = `<h1>BMW 320 <span>2.0d</span> <div class="obiava">x</div></h1><div class="Price">8 947 €</div>
+    <div class="item"><div>Дата на производство</div><div>февруари 2013</div></div>
+    <div class="item"><div>Двигател</div><div>Дизелов</div></div>
+    <div class="item"><div>Категория</div><div>Комби</div></div>
+    <a href="//www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320">320</a>`;
+  const card = (id) => `<div class="item "><a href="//www.mobile.bg/obiava-${id}-bmw" class="title">BMW 320</a><div class="price "><div>8 000 €</div></div><div class="params"><span>май 2013 г.</span></div></div>`;
+  const asked = [];
+  const read = async (url) => {
+    asked.push(url);
+    return url.includes("obiava-") ? listingHtml : `x${card("117")}${card("5")}${card("6")}`;
+  };
+  const car = await L.gatherCar({ site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw" }, read);
+  assert.equal(car.listing.price_eur, 8947);
+  assert.deepEqual(car.comparables.map((r) => r.id), ["5", "6"]);
+  assert.equal(car.search_url, "https://www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320/kombi/dizelov/ot-2012/do-2014");
+  assert.equal(asked.length, 4);
+  await assert.rejects(L.gatherCar({ site: "mobile", url: "https://www.mobile.bg/obiava-1" }, async () => "<html></html>"), /couldn't read/);
+});
+
+test("odometer flag needs a clear reading off by more than 15%, and never comes from the model's wording", () => {
+  const now = Date.UTC(2026, 9, 15);
+  const listing = { year: 2012, km: 104000, photos: [1, 2, 3, 4], vin: null };
+  const codes = (vision) => F.flags(listing, now, vision).map((f) => f.code);
+  assert.deepEqual(codes({ odometer: { km: 266777, photo: 10, clear: false } }), ["vin_missing"]);
+  assert.deepEqual(codes({ odometer: { km: 104677, photo: 10, clear: true } }), ["vin_missing"]);
+  assert.deepEqual(F.flags(listing, now, { odometer: { km: 266777, photo: 10, clear: true } })[0], {
+    code: "odometer_check", photo: 10, seen_km: 266777, listed_km: 104000,
+  });
+});
+
 test("handle rejects bad input before any fetch", async () => {
   const env = { DO_INFERENCE_KEY: "k", TURNSTILE_SECRET: "s" };
   const fetchImpl = async () => assert.fail("must not fetch");
   const call = (body) => F.handle({ method: "POST", rawBody: JSON.stringify(body) }, { env, fetchImpl });
-  const a = goodCar("https://www.mobile.bg/obiava-1");
-  assert.equal((await call({ cars: [a] })).status, 400);
-  assert.equal((await call({ cars: [a, goodCar("https://evil.example/x")] })).status, 400);
-  assert.equal((await call({ cars: [a, goodCar("https://www.mobile.bg/obiava-2")] })).status, 403);
-  assert.equal((await F.handle({ method: "POST", rawBody: "x".repeat(200001) }, { env, fetchImpl })).status, 413);
+  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1"] })).status, 400);
+  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1", "https://evil.example/x"] })).status, 400);
+  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1", "https://mobile.bg/obiava-1"] })).status, 400);
+  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1", "https://www.mobile.bg/obiava-2"] })).status, 403);
   assert.equal((await F.handle({ method: "POST", rawBody: "{}" }, { env: {}, fetchImpl })).status, 500);
 });

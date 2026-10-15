@@ -1,7 +1,6 @@
 "use strict";
-// The visitor's browser reads the listings (mobile.bg and cars.bg refuse
-// cloud servers) and sends the parsed data here. That makes every field
-// untrusted: this module rebuilds each listing from checked fields only.
+// Listings are parsed from third-party HTML, so every field is untrusted:
+// this module rebuilds each listing from checked fields only.
 // Photo URLs matter most: Gemma fetches them, so only the two sites' image
 // CDNs are accepted.
 

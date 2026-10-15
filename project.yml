@@ -16,6 +16,8 @@ packages:
           DO_INFERENCE_KEY: ${DO_INFERENCE_KEY}
           # Add once .env has a Prior Labs key (doctl refuses an empty one):
           # TABPFN_KEY: (same dollar-brace form as the keys above)
+          READER_URL: https://revcheck-reader.bmwrepairworkshop.workers.dev
+          READER_SECRET: ${READER_SECRET}
           MODEL: gemma-4-31B-it
           ALLOWED_ORIGIN: https://georgievalex.github.io
           TURNSTILE_SECRET: ${TURNSTILE_SECRET}

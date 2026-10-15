@@ -1,8 +1,12 @@
-// Parses mobile.bg and cars.bg pages into plain listing data. Runs in the
-// visitor's browser: both sites refuse requests from cloud servers, so the
-// RevCheck Reader extension fetches the pages and this module reads them.
-// siteOf() is the allowlist; the extension enforces its own copy.
+"use strict";
+// Reads one used-car listing from mobile.bg or cars.bg, plus up to 3 pages
+// of similar mobile.bg listings. Both sites refuse requests from
+// DigitalOcean, so pages are fetched through the RevCheck reader Worker on
+// Cloudflare (cloudflare/reader). siteOf() is the allowlist for visitor
+// URLs; the Worker enforces its own copy.
 
+const USER_AGENT = "RevCheck/0.1 (+https://github.com/GeorgievAlex/revcheck)";
+const SEARCH_PAGES = 3;
 const BGN_PER_EUR = 1.95583;
 const MAX_PHOTOS = 24;
 const MULTI_WORD_MAKES = ["alfa romeo", "aston martin", "land rover", "mercedes-benz", "rolls-royce"];
@@ -222,4 +226,36 @@ function parseSearchCards(html) {
   return rows;
 }
 
-export { siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, BGN_PER_EUR };
+// Returns read(url) -> page text. Through the reader Worker when READER_URL
+// is set (production), straight from this machine otherwise (local runs).
+function pageReader(env, fetchImpl) {
+  return async (url) => {
+    const res = env.READER_URL
+      ? await fetchImpl(`${env.READER_URL}?url=${encodeURIComponent(url)}`, { headers: { "X-Reader-Secret": env.READER_SECRET || "" } })
+      : await fetchImpl(url, { headers: { "User-Agent": USER_AGENT, Accept: "text/html" }, redirect: "follow" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // mobile.bg still serves windows-1251; cars.bg is UTF-8.
+    const head = new TextDecoder("latin1").decode(bytes.subarray(0, 2048));
+    const charset = ((res.headers.get("content-type") || "").match(/charset=([\w-]+)/i) || head.match(/charset=["']?([\w-]+)/i) || [])[1] || "utf-8";
+    return new TextDecoder(/1251/.test(charset) ? "windows-1251" : "utf-8").decode(bytes);
+  };
+}
+
+// One car: its listing, plus similar mobile.bg listings (same make/model,
+// body type and fuel, year ±1). cars.bg listings are matched against
+// mobile.bg too: cars.bg search needs ids its listing pages don't expose.
+async function gatherCar(target, read) {
+  const html = await read(target.url);
+  const listing = target.site === "mobile" ? parseMobile(html, target.url) : parseCars(html, target.url);
+  if (!listing.title || !listing.price_eur) throw new Error("couldn't read the listing (it may have been removed)");
+  const path = searchPath(listing);
+  if (!path || !listing.year) return { listing, comparables: [], search_url: null };
+  const pages = await Promise.all(Array.from({ length: SEARCH_PAGES }, (_, i) => read(searchUrl(path, listing.year, i + 1)).catch(() => "")));
+  const ownId = (target.url.match(/obiava-(\d+)/) || [])[1];
+  const seen = new Set();
+  const comparables = pages.flatMap(parseSearchCards).filter((r) => r.id !== ownId && !seen.has(r.id) && seen.add(r.id));
+  return { listing, comparables, search_url: searchUrl(path, listing.year, 1) };
+}
+
+module.exports = { siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, gatherCar, BGN_PER_EUR };

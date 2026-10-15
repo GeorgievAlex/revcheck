@@ -1,0 +1,7 @@
+# Deploy: npx wrangler deploy   (from this folder)
+# Secret: npx wrangler secret put READER_SECRET   (same value as READER_SECRET in ../../.env)
+name = "revcheck-reader"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false

@@ -8,3 +8,4 @@ packages/revcheck/compare/package-lock.json
 .swarm/
 .playwright-mcp/
 ruvector.db
+.wrangler/
