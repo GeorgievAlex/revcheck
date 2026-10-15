@@ -14,6 +14,7 @@
 const validate = require("./validate.js");
 const { siteOf, pageReader, readListing, findComparables } = require("./listing.js");
 const { marketFor } = require("./market.js");
+const { knowledgeFor } = require("./knowledge.js");
 
 const INFERENCE_URL = "https://inference.do-ai.run/v1/chat/completions";
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -41,7 +42,7 @@ Return ONLY one JSON object, no prose, no code fences:
 {"winner": "a"|"b"|"even", "headline": string, "why": [string], "watch_out_a": [string], "watch_out_b": [string], "ask_seller": [string]}
 
 Rules:
-- Weigh price against the market, mileage for the age, condition seen in photos, equipment, and red flags. A cheaper car with hidden problems is not the better buy.
+- Weigh price against the market, mileage for the age, condition seen in photos, equipment, known weak spots of each engine/model (model_knowledge), and red flags. A cheaper car with an engine known for expensive failures needs that said. A cheaper car with hidden problems is not the better buy.
 - headline: one sentence naming the better pick and the main reason.
 - why: 2-4 short reasons with numbers from the data (euros, km, percentiles).
 - watch_out_a / watch_out_b: the specific things to inspect or doubt for each car.
@@ -181,7 +182,7 @@ async function analyzeOne(listing, target, read, lang, env, fetchImpl, timings, 
       timings[`${name}_${label}`] = Date.now() - started;
     }
   };
-  const [vision, market] = await Promise.all([
+  const [vision, market, knowledge] = await Promise.all([
     timed("photos", () => inspectPhotos(listing, lang, env, fetchImpl)),
     timed("market", async () => {
       const found = await findComparables(listing, target, read);
@@ -190,14 +191,17 @@ async function analyzeOne(listing, target, read, lang, env, fetchImpl, timings, 
         tabpfnKey: env.TABPFN_KEY,
       });
     }),
+    timed("knowledge", () => knowledgeFor(listing, lang, env, fetchImpl)),
   ]);
-  return { listing, vision, market, flags: flags(listing, Date.now(), vision) };
+  return { listing, vision, market, knowledge, flags: flags(listing, Date.now(), vision) };
 }
 
 async function verdict(a, b, lang, env, fetchImpl) {
   const brief = (x) => ({
     listing: { ...x.listing, photos: x.listing.photos.length, description: x.listing.description.slice(0, 800) },
     photos_seen: x.vision,
+    // Model knowledge, not a VIN decode: treat the engine as likely, not certain.
+    model_knowledge: x.knowledge && { engine: x.knowledge.engine, known_issues: x.knowledge.known_issues.map((i) => `${i.part}: ${i.problem}`), seller_claim_conflicts: x.knowledge.seller_claim_conflicts },
     market: x.market && { ...x.market, search_url: undefined, other_search_url: undefined },
     flags: x.flags,
   });

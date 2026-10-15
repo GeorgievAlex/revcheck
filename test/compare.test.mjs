@@ -7,6 +7,7 @@ const L = require("../packages/revcheck/compare/listing.js");
 const M = require("../packages/revcheck/compare/market.js");
 const F = require("../packages/revcheck/compare/index.js");
 const V = require("../packages/revcheck/compare/validate.js");
+const K = require("../packages/revcheck/compare/knowledge.js");
 
 test("siteOf only accepts mobile.bg and cars.bg listing pages", () => {
   assert.deepEqual(L.siteOf("https://www.mobile.bg/obiava-117-bmw-320?x=1"), { site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw-320" });
@@ -45,6 +46,7 @@ test("parseMobile reads the listing structure", () => {
     <div class="item"><div>Скоростна кутия</div><div>Автоматична</div></div>
     <div class="item"><div>Пробег [км]</div><div>184000 км</div></div>
     <div class="item"><div>Цвят</div><div>Бял</div></div>
+    <div class="item"><div>VIN номер</div><div>WBAWC51030PS99355</div></div>
     <div class="moreInfo"><div class="text">Оригинален м пакет<br>VIN WBA3C11070F123456<div class="viewSites">x</div></div></div>
     <div class="carExtri"><span class="Title">Комфорт</span><div class="items"><div data-title="ACC">Климатроник</div><div>Навигация</div></div></div></div></div>
     <a href="//www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320">320</a>
@@ -60,7 +62,7 @@ test("parseMobile reads the listing structure", () => {
   assert.equal(l.color, "Бял");
   assert.equal(l.location, "гр. София");
   assert.deepEqual(l.extras, ["Климатроник", "Навигация"]);
-  assert.equal(l.vin, "WBA3C11070F123456");
+  assert.equal(l.vin, "WBAWC51030PS99355"); // the technical-data row wins over the description
   assert.equal(l.search_path, "bmw/320");
   assert.deepEqual(l.photos, ["https://mobistatic4.focus.bg/mobile/photosorg/454/1/big/117_Cf.webp"]);
 });
@@ -273,6 +275,22 @@ test("us_import flag comes from the listing text", () => {
   const base = { photos: [1, 2, 3, 4], vin: "X", title: "BMW 328" };
   assert.ok(F.flags({ ...base, description: "Нов внос от САЩ." }).some((f) => f.code === "us_import"));
   assert.ok(!F.flags({ ...base, description: "Нов внос от Швейцария." }).some((f) => f.code === "us_import"));
+});
+
+test("knowledge output is cleaned: enums, caps, no stray fields", () => {
+  const k = K.clean({
+    engine: { code: "N52B30", alternatives: ["N53B30"], confidence: "very", reason: "272 hp" },
+    known_issues: [...Array(9)].map((_, i) => ({ part: `p${i}`, problem: "x", severity: "extreme", injected: true })).concat([{ part: "", problem: "no part" }]),
+    campaigns: [{ what: "Blower motor wiring", note: "ask a dealer" }, { note: "no what" }],
+    seller_claim_conflicts: "not a list",
+  });
+  assert.equal(k.engine.confidence, "low");
+  assert.deepEqual(k.engine.alternatives, ["N53B30"]);
+  assert.equal(k.known_issues.length, 6);
+  assert.equal(k.known_issues[0].severity, "medium");
+  assert.equal("injected" in k.known_issues[0], false);
+  assert.equal("campaigns" in k, false); // AI-listed campaigns proved unreliable; never shown
+  assert.deepEqual(k.seller_claim_conflicts, []);
 });
 
 test("handle rejects bad input before any fetch", async () => {

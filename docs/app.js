@@ -41,6 +41,18 @@ const T = {
     over: (d) => `${d} above the expected price`,
     under: (d) => `${d} below the expected price`,
     seeComps: (site) => `See similar cars on ${site}`,
+    knownTitle: "Known issues for this engine and model",
+    engine: "Engine",
+    orEngine: "or",
+    confidence: { high: "certain", medium: "likely", low: "unsure" },
+    conflicts: "Check against the listing",
+    severity: { high: "serious", medium: "common", low: "minor" },
+    checkIt: "Check",
+    campaigns: "Recalls and service campaigns: ask an authorized dealer to check the VIN for open ones before you buy.",
+    knownNote: (m) => `From the AI model's knowledge (${m}, open-weight), not a VIN decode. Confirm the engine with a VIN decoder.`,
+    decodeVin: (site) => `Decode the VIN on ${site}`,
+    copyVin: "Copy VIN",
+    copied: "Copied",
     bySite: (sites) => `Compared with ${sites}.`,
     matched: (e, y) => `Same model, body type and fuel, ${y && y.length === 2 ? `${y[0]}–${y[1]}` : "year ±1"}${e ? (e.by === "power_hp" ? `, ${e.value} hp ±10%` : `, ${e.value} cc ±150`) : ""}.`,
     photosChecked: (n, m) => `${n} of ${m} photos checked.`,
@@ -102,6 +114,18 @@ const T = {
     over: (d) => `${d} над пазарната цена`,
     under: (d) => `${d} под пазарната цена`,
     seeComps: (site) => `Виж подобните в ${site}`,
+    knownTitle: "Известни проблеми на двигателя и модела",
+    engine: "Двигател",
+    orEngine: "или",
+    confidence: { high: "сигурно", medium: "вероятно", low: "несигурно" },
+    conflicts: "Да се провери спрямо обявата",
+    severity: { high: "сериозно", medium: "често", low: "дребно" },
+    checkIt: "Проверете",
+    campaigns: "Изтегляния и сервизни кампании: помолете оторизиран сервиз да провери по VIN дали има неизпълнени, преди да купите.",
+    knownNote: (m) => `По знанията на AI модела (${m}, отворен модел), не по VIN. Потвърдете двигателя с VIN декодер.`,
+    decodeVin: (site) => `Декодирай VIN в ${site}`,
+    copyVin: "Копирай VIN",
+    copied: "Копирано",
     bySite: (sites) => `Сравнено с ${sites}.`,
     matched: (e, y) => `Сравнено със същия модел, купе и гориво, ${y && y.length === 2 ? `${y[0]}–${y[1]} г.` : "година ±1"}${e ? (e.by === "power_hp" ? `, ${e.value} к.с. ±10%` : `, ${e.value} куб.см ±150`) : ""}.`,
     photosChecked: (n, m) => `Разгледани ${n} от ${m} снимки.`,
@@ -211,6 +235,46 @@ function marketBlock(m) {
   return out;
 }
 
+function knowledgeBlock(k) {
+  const s = t();
+  if (!k) return [];
+  const e = k.engine;
+  const out = [el("h4", {}, s.knownTitle)];
+  if (e.code) {
+    out.push(
+      el("p", {}, `${s.engine}: `, el("strong", {}, e.code), e.alternatives.length ? ` ${s.orEngine} ${e.alternatives.join(", ")}` : "", " ", el("span", { class: `pill ${e.confidence === "high" ? "good" : "fair"}` }, s.confidence[e.confidence])),
+      e.how_to_confirm ? el("p", { class: "muted small" }, e.how_to_confirm) : null,
+    );
+  }
+  out.push(...list(s.conflicts, k.seller_claim_conflicts));
+  if (k.known_issues.length) {
+    out.push(
+      el("ul", { class: "issues" }, k.known_issues.map((i) =>
+        el("li", {}, el("span", { class: `pill ${i.severity === "high" ? "poor" : i.severity === "medium" ? "fair" : ""}` }, s.severity[i.severity]), " ", el("strong", {}, i.part), `: ${i.problem}`, i.check ? el("span", { class: "muted small block" }, `${s.checkIt}: ${i.check}`) : null),
+      )),
+    );
+  }
+  out.push(el("p", { class: "small" }, s.campaigns), el("p", { class: "muted small" }, s.knownNote(k.model)));
+  return out;
+}
+
+// Exact engine code, build date and options come from a VIN decoder. These
+// sites don't allow automated lookups, so they're links the buyer clicks.
+function vinLinks(l) {
+  const s = t();
+  if (!l.vin) return [];
+  const bmw = /^(bmw|mini)$/i.test(l.make || "");
+  const copy = el("button", { type: "button", class: "button ghost small-button" }, s.copyVin);
+  copy.addEventListener("click", () => navigator.clipboard.writeText(l.vin).then(() => (copy.textContent = s.copied), () => {}));
+  return [
+    el("p", { class: "small comp-links" },
+      el("a", { href: `https://www.mdecoder.com/decode/${encodeURIComponent(l.vin)}`, rel: "noopener", target: "_blank" }, s.decodeVin("mdecoder")),
+      bmw ? el("a", { href: "https://bimmer.work/", rel: "noopener", target: "_blank" }, s.decodeVin("bimmer.work")) : null,
+      copy,
+    ),
+  ];
+}
+
 function visionBlock(v) {
   const s = t();
   if (!v) return [el("h4", {}, s.photos), el("p", { class: "muted" }, s.noPhotoRead)];
@@ -245,8 +309,10 @@ function carCard(x, label, watch, isWinner) {
     el("dl", { class: "facts" }, facts.map(([k, v]) => [el("dt", {}, k), el("dd", {}, String(v))])),
     ...marketBlock(x.market),
     ...visionBlock(x.vision),
+    ...knowledgeBlock(x.knowledge),
     el("h4", {}, s.flags),
     el("ul", {}, x.flags.map((f) => el("li", {}, s.flag[f.code](f)))),
+    ...vinLinks(l),
     ...list(s.watch, watch),
     el("p", {}, el("a", { class: "button ghost", href: l.url, rel: "noopener", target: "_blank" }, s.open)),
   ];

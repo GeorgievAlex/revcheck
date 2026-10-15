@@ -157,3 +157,6 @@ main.wide, header.site, footer.site { max-width: 1040px; }
 .lang-switch button[aria-pressed="true"] { opacity: 1; border-color: var(--accent); }
 .flag { width: 28px; height: 18px; display: block; border-radius: 2px; box-shadow: 0 0 0 1px var(--line); }
 .comp-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.block { display: block; margin-top: 2px; }
+ul.issues li { margin-bottom: 8px; }
+.small-button { padding: 2px 10px; font-size: 0.85rem; }

@@ -134,7 +134,8 @@ function parseMobile(html, url) {
     location: text((html.match(/<div class="carLocation">([\s\S]*?)<\/div>/) || [])[1]).replace(/^Намира се в\s*/, "") || null,
     extras,
     description: text(descBlock).slice(0, 3000),
-    vin: findVin(text(descBlock)) || findVin((html.match(/VIN[^<]{0,40}/i) || [])[0]),
+    // mobile.bg has a "VIN номер" row in its technical data; sellers also paste it in the text.
+    vin: findVin(get("VIN")) || findVin(text(descBlock)),
     photos: photos.slice(0, MAX_PHOTOS),
     search_path: searchPath && searchPath.includes("/") ? searchPath : null,
   };
