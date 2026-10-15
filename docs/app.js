@@ -8,11 +8,11 @@ const LANG_KEY = "revcheck-lang";
 const T = {
   en: {
     h1: "Two listings. Which one is the better buy?",
-    lede: "Paste two used-car listings from mobile.bg or cars.bg. Gemma 4, an open-weight model, looks at the photos for damage and equipment. The price is checked against similar cars for sale, with a fair-price range from TabPFN. Then you get a verdict and what to ask the seller.",
+    lede: "Paste two used-car listings from mobile.bg or cars.bg. Gemma 4 looks at every photo for damage and equipment, DeepSeek V4 flags the known weak spots of each engine, and TabPFN works out a fair price from similar cars for sale. Then you get a verdict and what to ask the seller. All open-weight models.",
     labelA: "Listing A",
     labelB: "Listing B",
     go: "Compare",
-    footer: "The two links are sent to a DigitalOcean Function. It reads the public listings through a small Cloudflare Worker, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.",
+    footer: "The two links go to a DigitalOcean Function, which reads the public listings through a small Cloudflare Worker. Gemma 4 and DeepSeek V4 run on DigitalOcean Serverless Inference, TabPFN on Prior Labs. Nothing is stored. Treat the result as a second opinion, not an inspection.",
     working: "Reading both listings, looking at every photo and checking the market. This takes about 30–40 seconds…",
     writing: "Both cars are checked. Writing the verdict…",
     carLoading: "Checking this car…",
@@ -84,11 +84,11 @@ const T = {
   },
   bg: {
     h1: "Две обяви. Коя кола да вземете?",
-    lede: "Поставете линковете на две обяви от mobile.bg или cars.bg. AI разглежда всички снимки за щети и екстри, сравнява цената с подобни коли на пазара и ви казва коя е по-добрата сделка и какво да питате продавача, преди да отидете на оглед.",
+    lede: "Поставете линковете на две обяви от mobile.bg или cars.bg. AI разглежда всички снимки за щети и екстри, проверява известните слабости на двигателя и сравнява цената с подобни коли на пазара. Накрая ви казва коя е по-добрата сделка и какво да питате продавача, преди да отидете на оглед.",
     labelA: "Обява A",
     labelB: "Обява Б",
     go: "Сравни",
-    footer: "RevCheck чете само публичната информация от обявите. Снимките се анализират от Gemma 4 (отворен AI модел), а цената от TabPFN. Нищо не се записва. Отчетът е второ мнение и не замества огледа и проверката в сервиз.",
+    footer: "RevCheck чете само публичната информация от обявите. Снимките се анализират от Gemma 4, известните проблеми от DeepSeek V4 (отворени AI модели), а цената от TabPFN. Нищо не се записва. Отчетът е второ мнение и не замества огледа и проверката в сервиз.",
     working: "Чета обявите, разглеждам снимките и проверявам цените. Отнема около 30–40 секунди…",
     writing: "Двете коли са проверени. Пиша препоръката…",
     carLoading: "Проверявам колата…",
