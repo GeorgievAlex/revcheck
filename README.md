@@ -1,8 +1,8 @@
-# KoyaKola
+# RevCheck
 
-"Коя кола?" means "Which car?". Paste two used-car listings from **mobile.bg** or **cars.bg** and get a side-by-side report and a verdict on which one is the better buy.
+The pre-purchase check from the RevSofia family. Paste two used-car listings from **mobile.bg** or **cars.bg** and get a side-by-side report and a verdict on which one is the better buy.
 
-**Site:** https://georgievalex.github.io/koyakola/ (once deployed)
+**Site:** https://georgievalex.github.io/revcheck/ (once deployed)
 
 ## What it checks, per car
 
@@ -20,7 +20,7 @@ Gemma then reads both reports and writes the verdict: which car to pick and why,
 browser ── GitHub Pages (static: docs/) + Cloudflare Turnstile widget
    │  POST text/plain {urls: [a, b], lang, turnstile}
    ▼
-DigitalOcean Function  koyakola/compare   (holds the model, TabPFN and Turnstile secrets)
+DigitalOcean Function  revcheck/compare   (holds the model, TabPFN and Turnstile secrets)
    ├─ fetch both listings (mobile.bg / cars.bg only)
    ├─ Gemma 4 vision on each car's photos ─┐  DigitalOcean Serverless Inference
    ├─ mobile.bg comparables (3 pages)      │
@@ -46,7 +46,7 @@ npm test
 
 ```
 doctl serverless deploy .
-doctl serverless functions get koyakola/compare --url   # paste into docs/config.js
+doctl serverless functions get revcheck/compare --url   # paste into docs/config.js
 ```
 
 Then enable GitHub Pages from `docs/` on `main`.

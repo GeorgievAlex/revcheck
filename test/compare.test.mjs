@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const L = require("../packages/koyakola/compare/listing.js");
-const M = require("../packages/koyakola/compare/market.js");
-const F = require("../packages/koyakola/compare/index.js");
+const L = require("../packages/revcheck/compare/listing.js");
+const M = require("../packages/revcheck/compare/market.js");
+const F = require("../packages/revcheck/compare/index.js");
 
 test("siteOf only accepts mobile.bg and cars.bg listing pages", () => {
   assert.deepEqual(L.siteOf("https://www.mobile.bg/obiava-117-bmw-320?x=1"), { site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw-320" });

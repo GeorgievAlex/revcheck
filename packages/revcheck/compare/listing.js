@@ -4,7 +4,7 @@
 // these two hosts are ever fetched: the URL comes from the visitor, so this
 // allowlist is what keeps the function from being an open proxy.
 
-const USER_AGENT = "KoyaKola/0.1 (+https://github.com/GeorgievAlex/koyakola)";
+const USER_AGENT = "RevCheck/0.1 (+https://github.com/GeorgievAlex/revcheck)";
 const BGN_PER_EUR = 1.95583;
 const MAX_PHOTOS = 6;
 const MULTI_WORD_MAKES = ["alfa romeo", "aston martin", "land rover", "mercedes-benz", "rolls-royce"];

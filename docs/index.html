@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KoyaKola: which car is the better buy?</title>
+  <title>RevCheck: which car is the better buy?</title>
   <meta name="description" content="Paste two used-car listings from mobile.bg or cars.bg. Open-weight AI checks the photos, the price against the market and the red flags, then tells you which one to go see.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
-  <script>try { if (localStorage.getItem("koyakola-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script></head>
+  <script>try { if (localStorage.getItem("revcheck-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script></head>
 <body>
   <header class="site">
-    <a class="brand" href="./" aria-label="KoyaKola home"><img class="logo" src="favicon.svg" alt=""><span class="wordmark">Koya<span>Kola</span></span></a>
+    <a class="brand" href="./" aria-label="RevCheck home"><img class="logo" src="favicon.svg" alt=""><span class="wordmark">Rev<span>Check</span></span></a>
     <nav>
       <button id="lang-toggle" class="theme-toggle" type="button">БГ</button>
       <button id="theme-toggle" class="theme-toggle" type="button">☀ Light</button>
@@ -42,7 +42,7 @@
   </main>
   <footer class="site">
     <p data-i18n="footer">The two links are sent to a DigitalOcean Function. It reads the public listings, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
-    <p><a href="https://github.com/GeorgievAlex/koyakola">Source</a></p>
+    <p><a href="https://github.com/GeorgievAlex/revcheck">Source</a></p>
   </footer>
   <script type="module" src="theme.js"></script>
   <script type="module" src="app.js"></script>

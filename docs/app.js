@@ -1,7 +1,7 @@
 import { FUNCTION_URL, TURNSTILE_SITEKEY } from "./config.js";
 
 const $ = (id) => document.getElementById(id);
-const LANG_KEY = "koyakola-lang";
+const LANG_KEY = "revcheck-lang";
 
 const T = {
   en: {

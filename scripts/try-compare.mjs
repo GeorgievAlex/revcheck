@@ -1,7 +1,7 @@
 // Runs a full comparison locally, skipping Turnstile. Reads keys from .env.
 //   node --env-file=.env scripts/try-compare.mjs <urlA> <urlB> [en|bg]
 import { createRequire } from "node:module";
-const { compare } = createRequire(import.meta.url)("../packages/koyakola/compare/index.js");
+const { compare } = createRequire(import.meta.url)("../packages/revcheck/compare/index.js");
 
 const [a, b, lang = "en"] = process.argv.slice(2);
 if (!a || !b) {

@@ -123,7 +123,7 @@ header.site nav a { white-space: nowrap; }
   .cal-day { aspect-ratio: auto; height: 52px; }
 }
 
-/* KoyaKola */
+/* RevCheck */
 main.wide, header.site, footer.site { max-width: 1040px; }
 .cars { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 @media (max-width: 760px) { .cars { grid-template-columns: 1fr; } }

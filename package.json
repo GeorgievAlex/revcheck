@@ -1,5 +1,5 @@
 {
-  "name": "koyakola",
+  "name": "revcheck",
   "private": true,
   "description": "Compare two used-car listings from mobile.bg or cars.bg with open-weight AI",
   "type": "module",

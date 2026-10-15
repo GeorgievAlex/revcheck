@@ -1,5 +1,5 @@
 // Filled in after `doctl serverless deploy .`:
-//   doctl serverless functions get koyakola/compare --url
+//   doctl serverless functions get revcheck/compare --url
 export const FUNCTION_URL = "";
 
 // Cloudflare Turnstile site key (public). Same widget as RevSofia, since both

@@ -3,7 +3,7 @@
 # Secrets come from ./.env (git-ignored), never from this file.
 environment: {}
 packages:
-  - name: koyakola
+  - name: revcheck
     functions:
       - name: compare
         runtime: nodejs:18

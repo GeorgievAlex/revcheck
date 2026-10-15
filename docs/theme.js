@@ -1,7 +1,7 @@
 // Dark is the default. A viewer's explicit choice is remembered in this
 // browser only. The inline script in each page's <head> applies a stored
 // choice before first paint; this module wires the header toggle.
-export const STORAGE_KEY = "koyakola-theme";
+export const STORAGE_KEY = "revcheck-theme";
 
 export function resolveTheme(stored) {
   return stored === "light" ? "light" : "dark";
