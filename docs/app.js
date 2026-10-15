@@ -40,7 +40,8 @@ const T = {
     fair: (lo, hi, n) => `TabPFN fair range: ${lo} – ${hi} (trained on ${n} listings)`,
     over: (d) => `${d} above the expected price`,
     under: (d) => `${d} below the expected price`,
-    seeComps: "See the similar listings",
+    seeComps: (site) => `See similar cars on ${site}`,
+    bySite: (sites) => `Compared with ${sites}.`,
     matched: (e, y) => `Same model, body type and fuel, ${y && y.length === 2 ? `${y[0]}–${y[1]}` : "year ±1"}${e ? (e.by === "power_hp" ? `, ${e.value} hp ±10%` : `, ${e.value} cc ±150`) : ""}.`,
     photosChecked: (n, m) => `${n} of ${m} photos checked.`,
     photos: "What the photos show",
@@ -100,7 +101,8 @@ const T = {
     fair: (lo, hi, n) => `Реална пазарна цена: ${lo} – ${hi} (TabPFN, по ${n} обяви)`,
     over: (d) => `${d} над пазарната цена`,
     under: (d) => `${d} под пазарната цена`,
-    seeComps: "Виж подобните обяви",
+    seeComps: (site) => `Виж подобните в ${site}`,
+    bySite: (sites) => `Сравнено с ${sites}.`,
     matched: (e, y) => `Сравнено със същия модел, купе и гориво, ${y && y.length === 2 ? `${y[0]}–${y[1]} г.` : "година ±1"}${e ? (e.by === "power_hp" ? `, ${e.value} к.с. ±10%` : `, ${e.value} куб.см ±150`) : ""}.`,
     photosChecked: (n, m) => `Разгледани ${n} от ${m} снимки.`,
     photos: "Какво се вижда на снимките",
@@ -201,7 +203,11 @@ function marketBlock(m) {
     );
   }
   if (m.comparables) out.push(el("p", { class: "muted small" }, s.matched(m.engine_matched, m.years)));
-  if (m.search_url) out.push(el("p", { class: "small" }, el("a", { href: m.search_url, rel: "noopener", target: "_blank" }, s.seeComps)));
+  const siteOfUrl = (u) => (u.includes("cars.bg") ? "cars.bg" : "mobile.bg");
+  const counts = Object.entries(m.by_site || {});
+  if (counts.length > 1) out.push(el("p", { class: "muted small" }, s.bySite(counts.map(([site, n]) => `${n} × ${site}`).join(" + "))));
+  const links = [m.search_url, m.other_search_url].filter(Boolean);
+  if (links.length) out.push(el("p", { class: "small comp-links" }, links.map((u) => el("a", { href: u, rel: "noopener", target: "_blank" }, s.seeComps(siteOfUrl(u))))));
   return out;
 }
 

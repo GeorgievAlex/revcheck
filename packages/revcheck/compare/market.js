@@ -104,7 +104,8 @@ function cleanComparables(listing, rows) {
   let test = null;
   if (listing.power_hp) {
     engine = { by: "power_hp", value: listing.power_hp };
-    test = (r) => r.power_hp && Math.abs(r.power_hp - listing.power_hp) <= listing.power_hp * 0.1;
+    // cars.bg cards have no power figure; their search URL filtered it (engine_ok).
+    test = (r) => r.engine_ok || (r.power_hp && Math.abs(r.power_hp - listing.power_hp) <= listing.power_hp * 0.1);
   } else if (listing.engine_cc) {
     engine = { by: "engine_cc", value: listing.engine_cc };
     test = (r) => r.engine_cc && Math.abs(r.engine_cc - listing.engine_cc) <= 150;
@@ -113,7 +114,13 @@ function cleanComparables(listing, rows) {
   return sameEngine.length >= MIN_AFTER_ENGINE_MATCH ? { rows: sameEngine, engine } : { rows: real, engine: null };
 }
 
-async function marketFor(listing, comparables, searchUrl, { fetchImpl, tabpfnKey }) {
+// Years searched, from either site's URL ("ot-2009/do-2011" or "yearFrom=2009&yearTo=2011").
+const yearsOf = (url) => {
+  const m = url && (url.match(/ot-(\d{4})\/do-(\d{4})/) || url.match(/yearFrom=(\d{4}).*yearTo=(\d{4})/));
+  return m ? [Number(m[1]), Number(m[2])] : null;
+};
+
+async function marketFor(listing, comparables, searchUrl, otherSearchUrl, { fetchImpl, tabpfnKey }) {
   const { rows, engine } = cleanComparables(listing, comparables);
   const prices = rows.map((r) => r.price_eur);
   let fair = null;
@@ -125,8 +132,10 @@ async function marketFor(listing, comparables, searchUrl, { fetchImpl, tabpfnKey
   }
   return {
     search_url: searchUrl,
-    years: searchUrl && (searchUrl.match(/ot-(\d{4})\/do-(\d{4})/) || []).slice(1).map(Number),
+    other_search_url: otherSearchUrl,
+    years: yearsOf(searchUrl) || yearsOf(otherSearchUrl),
     comparables: rows.length,
+    by_site: rows.reduce((n, r) => ({ ...n, [r.source || "mobile.bg"]: (n[r.source || "mobile.bg"] || 0) + 1 }), {}),
     engine_matched: engine,
     percentile: pricePercentile(listing.price_eur, prices),
     median_eur: median(prices),

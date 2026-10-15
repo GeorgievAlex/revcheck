@@ -156,3 +156,4 @@ main.wide, header.site, footer.site { max-width: 1040px; }
 .lang-switch button:hover { opacity: 0.85; }
 .lang-switch button[aria-pressed="true"] { opacity: 1; border-color: var(--accent); }
 .flag { width: 28px; height: 18px; display: block; border-radius: 2px; box-shadow: 0 0 0 1px var(--line); }
+.comp-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }

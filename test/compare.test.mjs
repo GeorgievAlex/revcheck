@@ -228,16 +228,34 @@ test("readListing and findComparables: listing, then 3 filtered search pages, sk
   const asked = [];
   const read = async (url) => {
     asked.push(url);
+    if (url.includes("cars.bg")) return "";
     return url.includes("obiava-") ? listingHtml : `x${card("117")}${card("5")}${card("6")}`;
   };
   const target = { site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw" };
   const listing = await L.readListing(target, read);
   assert.equal(listing.price_eur, 8947);
   const car = await L.findComparables(listing, target, read);
-  assert.deepEqual(car.comparables.map((r) => r.id), ["5", "6"]);
-  assert.equal(asked.length, 7); // 3 pages at ±1 found only 2 cars, so 3 more at ±2
+  assert.deepEqual(car.comparables.map((r) => `${r.source}:${r.id}`), ["mobile.bg:5", "mobile.bg:6"]);
+  // 3 mobile.bg pages at ±1 found only 2 cars, so 3 more at ±2.
+  assert.equal(asked.filter((u) => u.includes("mobile.bg/obiavi")).length, 6);
   assert.equal(car.search_url, "https://www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320/kombi/dizelov/ot-2011/do-2015");
   await assert.rejects(L.readListing({ site: "mobile", url: "https://www.mobile.bg/obiava-1" }, async () => "<html></html>"), /couldn't read/);
+});
+
+test("parseCarsCards reads cars.bg result cards", () => {
+  const card = (id, price, line) => `<div title="BMW 328 Xdrive" data-item="1"><a href="https://www.cars.bg/offer/${id}"></a><!--${price}--><div>${line}</div></div>`;
+  const rows = L.parseCarsCards(`x${card("67d5a7d925242358d403cfe5", "7,799 EUR", "2011, Бензин, 226009 км. Нов внос")}${card("6a9029461f8f2369d703a522", "", "2012, Бензин, 1 км")}`, true);
+  assert.deepEqual(rows, [{ id: "67d5a7d925242358d403cfe5", source: "cars.bg", title: "BMW 328 Xdrive", price_eur: 7799, year: 2011, km: 226009, fuel: "petrol", engine_ok: true }]);
+});
+
+test("dedupe drops the same car listed on both sites", () => {
+  const rows = L.dedupe([
+    { id: "1", source: "mobile.bg", year: 2011, price_eur: 7800, km: 226000 },
+    { id: "a", source: "cars.bg", year: 2011, price_eur: 7799, km: 226009 },
+    { id: "b", source: "cars.bg", year: 2011, price_eur: 7799, km: 150000 },
+    { id: "1", source: "mobile.bg", year: 2011, price_eur: 7800, km: 226000 },
+  ]);
+  assert.deepEqual(rows.map((r) => r.id), ["1", "b"]);
 });
 
 test("odometer flag needs a clear reading off by more than 15%, and never comes from the model's wording", () => {

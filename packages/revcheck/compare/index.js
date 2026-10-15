@@ -185,7 +185,10 @@ async function analyzeOne(listing, target, read, lang, env, fetchImpl, timings, 
     timed("photos", () => inspectPhotos(listing, lang, env, fetchImpl)),
     timed("market", async () => {
       const found = await findComparables(listing, target, read);
-      return marketFor(listing, validate.comparables(found.comparables), validate.searchUrl(found.search_url), { fetchImpl, tabpfnKey: env.TABPFN_KEY });
+      return marketFor(listing, validate.comparables(found.comparables), validate.searchUrl(found.search_url), validate.searchUrl(found.other_search_url), {
+        fetchImpl,
+        tabpfnKey: env.TABPFN_KEY,
+      });
     }),
   ]);
   return { listing, vision, market, flags: flags(listing, Date.now(), vision) };
@@ -195,7 +198,7 @@ async function verdict(a, b, lang, env, fetchImpl) {
   const brief = (x) => ({
     listing: { ...x.listing, photos: x.listing.photos.length, description: x.listing.description.slice(0, 800) },
     photos_seen: x.vision,
-    market: x.market && { ...x.market, search_url: undefined },
+    market: x.market && { ...x.market, search_url: undefined, other_search_url: undefined },
     flags: x.flags,
   });
   const v = await chat(env, fetchImpl, [

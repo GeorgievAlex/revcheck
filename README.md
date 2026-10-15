@@ -9,14 +9,14 @@ The pre-purchase check from the RevSofia family. Paste two used-car listings fro
 mobile.bg and cars.bg refuse requests from DigitalOcean (a Cloudflare challenge or a 403). From Cloudflare's own network they answer. So the function reads pages through **revcheck-reader** (`cloudflare/reader/`), a small Cloudflare Worker:
 
 - **Honest about who it is:** a `RevCheck/0.1 (+github link)` User-Agent, plus the `CF-Worker` header Cloudflare adds to every Worker request. Either site can block it with one rule, and if they do, we stop.
-- **Not a public proxy:** it requires a shared secret that only the DigitalOcean function has, and it only fetches a mobile.bg listing, a cars.bg offer, or a filtered mobile.bg search page (`/obiavi/avtomobili-dzhipove/<make>/<model>[/<body>][/<fuel>]/ot-YYYY/do-YYYY[/p-1..3]`).
-- **Low volume:** at most 8 page requests per comparison (2 listings plus 3 search pages each), and only when a visitor clicks Compare.
+- **Not a public proxy:** it requires a shared secret that only the DigitalOcean function has, and it only fetches a mobile.bg listing, a cars.bg offer, or a filtered mobile.bg search page (`/obiavi/avtomobili-dzhipove/<make>/<model>[/<body>][/<fuel>]/ot-YYYY/do-YYYY[/p-1..3]`), or a cars.bg search page and its model list (`carslist.php?…`, `carmodel.php?brandId=N`).
+- **Low volume:** about 10–20 page requests per comparison (2 listings, plus up to 3 mobile.bg and 1 cars.bg search page per car, twice if the search is widened), and only when a visitor clicks Compare.
 
 ## What it checks, per car
 
 - **The listing:** price, year, mileage, power, fuel, gearbox, color, the seller's extras and description, and a VIN if one is in the text.
 - **The photos:** **Gemma 4** (`gemma-4-31B-it`, open-weight, with vision) looks at up to 6 photos. It reports color, dents, scratches, rust and mismatched panels, and visible equipment such as M Sport bumpers, a panoramic roof, navigation or leather seats. It also flags extras the listing claims but the photos contradict.
-- **The market:** the same make and model, year ±1 and same fuel, taken from up to 3 pages of mobile.bg search results (about 50 cars). This gives "priced higher than N% of similar listings", plus the range and median. cars.bg listings are matched against mobile.bg too, because cars.bg search needs internal IDs its listing pages don't show.
+- **The market:** the same make, model, body type and fuel, year ±1 (±2 when that finds fewer than 8), from **both** mobile.bg (up to 3 pages) and cars.bg (its own ids for brand, model, fuel, body and a ±10% power range). Cars listed on both sites count once. This gives "priced higher than N% of similar cars", plus the range and median. "See similar cars" links to the listing's own site first.
 - **A fair price:** **TabPFN** (Prior Labs) is trained on those comparable cars, using year, km, power, engine size, fuel and gearbox. It returns a 10th–90th percentile price range for this exact car and how far the asking price is from it.
 - **Rule checks (no AI):** VIN present or missing, unusually low or high km per year, too few photos.
 

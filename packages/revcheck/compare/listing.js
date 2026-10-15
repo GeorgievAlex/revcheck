@@ -258,25 +258,101 @@ async function readListing(target, read) {
   return listing;
 }
 
-// Similar mobile.bg listings: same make/model, body type and fuel, year ±1.
-// cars.bg listings are matched against mobile.bg too: cars.bg search needs
-// ids its listing pages don't expose.
-async function findComparables(listing, target, read) {
-  const path = searchPath(listing);
-  if (!path || !listing.year) return { comparables: [], search_url: null };
-  const ownId = (target.url.match(/obiava-(\d+)/) || [])[1];
-  const search = async (span) => {
-    const pages = await Promise.all(Array.from({ length: SEARCH_PAGES }, (_, i) => read(searchUrl(path, listing.year, i + 1, span)).catch(() => "")));
-    const seen = new Set();
-    return pages.flatMap(parseSearchCards).filter((r) => r.id !== ownId && !seen.has(r.id) && seen.add(r.id));
-  };
-  let span = 1;
-  let comparables = await search(span);
-  if (comparables.length < WIDEN_BELOW) {
-    span = 2;
-    comparables = await search(span);
+// --- cars.bg search ---------------------------------------------------------
+// cars.bg filters by internal ids: brandId from its search page, models[]
+// from carmodel.php, fuelId[] and categoryId (body type) below. Result cards
+// carry price, year, fuel and km but no power, so power is filtered in the
+// URL (powerFrom/powerTo) instead.
+const CARS_FUEL = { petrol: 1, diesel: 2, hybrid: 6, electric: 7 };
+const CARS_BODY = { седан: 1, хечбек: 2, комби: 4, купе: 5, кабрио: 6, джип: 7, пикап: 8, ван: 9 };
+const carsIds = { brands: null, models: new Map() };
+
+const labelIds = (html, prefix) =>
+  new Map([...html.matchAll(new RegExp(`<label for="${prefix}_(\\d+)">([^<]+)</label>`, "g"))].map((m) => [text(m[2]).toLowerCase(), Number(m[1])]));
+
+async function carsSearchUrl(listing, span, read) {
+  if (!listing.make || !listing.model || !listing.year) return null;
+  if (!carsIds.brands) carsIds.brands = labelIds(await read("https://www.cars.bg/carslist.php"), "brandId");
+  const brandId = carsIds.brands.get(listing.make.toLowerCase());
+  if (!brandId) return null;
+  if (!carsIds.models.has(brandId)) carsIds.models.set(brandId, labelIds(await read(`https://www.cars.bg/carmodel.php?brandId=${brandId}`), "modelId"));
+  const modelId = carsIds.models.get(brandId).get(listing.model.toLowerCase());
+  if (!modelId) return null;
+  const q = new URLSearchParams({ subm: "1", brandId: String(brandId), "models[]": String(modelId), yearFrom: String(listing.year - span), yearTo: String(listing.year + span) });
+  if (CARS_FUEL[listing.fuel]) q.set("fuelId[]", String(CARS_FUEL[listing.fuel]));
+  if (CARS_BODY[bodyKey(listing.body)]) q.set("categoryId", String(CARS_BODY[bodyKey(listing.body)]));
+  if (listing.power_hp) {
+    q.set("powerFrom", String(Math.floor(listing.power_hp * 0.9)));
+    q.set("powerTo", String(Math.ceil(listing.power_hp * 1.1)));
   }
-  return { comparables, search_url: searchUrl(path, listing.year, 1, span) };
+  return `https://www.cars.bg/carslist.php?${q}`;
 }
 
-module.exports = { bodyKey, siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, readListing, findComparables, BGN_PER_EUR };
+function parseCarsCards(html, powerFiltered) {
+  const rows = [];
+  for (const card of html.split(/<div title="/).slice(1)) {
+    const id = (card.match(/offer\/([0-9a-f]{24})/) || [])[1];
+    const price = parsePrice((card.match(/<!--\s*([^>]*?(?:EUR|лв\.?))\s*-->/) || [])[1]);
+    const title = text(card.slice(0, card.indexOf('"')));
+    const summary = text(card).match(/\b((?:19|20)\d{2}),\s*([^,]+),\s*([\d\s]+)\s*км/);
+    if (!id || !price || !summary) continue;
+    rows.push({
+      id,
+      source: "cars.bg",
+      title,
+      price_eur: price,
+      year: Number(summary[1]),
+      km: digits(summary[3]),
+      fuel: normalizeFuel(summary[2]),
+      // The URL already filtered by power (±10%) when the listing had one.
+      engine_ok: powerFiltered || undefined,
+    });
+  }
+  return rows;
+}
+
+// Similar listings on both sites: same make/model, body type and fuel, year
+// ±1 (±2 when that finds fewer than 8). The link goes to the listing's own
+// site; the price comparison uses both, minus cars listed on both sites.
+async function findComparables(listing, target, read) {
+  const path = searchPath(listing);
+  const ownMobileId = (target.url.match(/obiava-(\d+)/) || [])[1];
+  const ownCarsId = (target.url.match(/offer\/([0-9a-f]{24})/) || [])[1];
+  const mobile = async (span) => {
+    if (!path || !listing.year) return { url: null, rows: [] };
+    const pages = await Promise.all(Array.from({ length: SEARCH_PAGES }, (_, i) => read(searchUrl(path, listing.year, i + 1, span)).catch(() => "")));
+    const rows = pages.flatMap(parseSearchCards).filter((r) => r.id !== ownMobileId).map((r) => ({ ...r, source: "mobile.bg" }));
+    return { url: searchUrl(path, listing.year, 1, span), rows };
+  };
+  const cars = async (span) => {
+    const url = await carsSearchUrl(listing, span, read).catch(() => null);
+    if (!url) return { url: null, rows: [] };
+    const html = await read(url).catch(() => "");
+    return { url, rows: parseCarsCards(html, Boolean(listing.power_hp)).filter((r) => r.id !== ownCarsId) };
+  };
+  const both = async (span) => {
+    const [m, c] = await Promise.all([mobile(span), cars(span)]);
+    return { m, c, rows: dedupe([...m.rows, ...c.rows]) };
+  };
+  let found = await both(1);
+  if (found.rows.length < WIDEN_BELOW) found = await both(2);
+  const own = target.site === "cars" ? found.c.url : found.m.url;
+  const other = target.site === "cars" ? found.m.url : found.c.url;
+  return { comparables: found.rows, search_url: own || other, other_search_url: own ? other : null };
+}
+
+// The same car is often listed on both sites (and twice on one): same year,
+// price within 3% and km within 2% counts as one car.
+function dedupe(rows) {
+  const out = [];
+  const seen = new Set();
+  for (const r of rows) {
+    if (seen.has(`${r.source}:${r.id}`)) continue;
+    seen.add(`${r.source}:${r.id}`);
+    const twin = out.some((o) => o.year === r.year && Math.abs(o.price_eur - r.price_eur) <= o.price_eur * 0.03 && o.km && r.km && Math.abs(o.km - r.km) <= o.km * 0.02);
+    if (!twin) out.push(r);
+  }
+  return out;
+}
+
+module.exports = { bodyKey, siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, readListing, findComparables, parseCarsCards, dedupe, BGN_PER_EUR };
