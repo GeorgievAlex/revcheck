@@ -6,9 +6,9 @@
 // CDNs are accepted.
 
 const MAX_COMPARABLES = 200;
-const MAX_PHOTOS = 6;
+const MAX_PHOTOS = 24;
 const LISTING_URL = /^https:\/\/www\.(mobile\.bg\/obiava-\d+[\w-]*|cars\.bg\/offer\/[0-9a-f]{24})$/;
-const SEARCH_URL = /^https:\/\/www\.mobile\.bg\/obiavi\/avtomobili-dzhipove\/[a-z0-9-]+\/[a-z0-9-]+\/ot-\d{4}\/do-\d{4}$/;
+const SEARCH_URL = /^https:\/\/www\.mobile\.bg\/obiavi\/avtomobili-dzhipove\/[a-z0-9-]+\/[a-z0-9-]+(\/[a-z-]+){0,2}\/ot-\d{4}\/do-\d{4}$/;
 const PHOTO_URL = /^https:\/\/((mobistatic|cdn)\d\.focus\.bg\/mobile\/photosorg\/\d+\/\d+\/big\/\d+_\w+\.webp|g\d-bg\.cars\.bg\/[\w-]+\/[0-9a-f]+o\.jpg)$/;
 const VIN = /^[A-HJ-NPR-Z0-9]{17}$/;
 const FUELS = ["diesel", "petrol", "hybrid", "plug-in hybrid", "electric"];

@@ -71,28 +71,57 @@ async function chat(env, fetchImpl, messages, maxTokens) {
 
 const strings = (v, max = 8) => (Array.isArray(v) ? v.filter((s) => typeof s === "string" && s.trim()).map((s) => s.trim().slice(0, 240)).slice(0, max) : []);
 
-async function inspectPhotos(listing, lang, env, fetchImpl) {
-  if (!listing.photos.length) return { condition: "unclear", damage: [], equipment_seen: [], claimed_not_visible: [], concerns: ["The listing has no photos."] };
+// DigitalOcean's endpoint takes at most 8 image URLs per request, so every
+// photo is checked in parallel batches of 8 and the findings are merged.
+const PHOTOS_PER_CALL = 8;
+const CONDITION_RANK = ["unclear", "good", "fair", "poor"];
+
+async function inspectBatch(listing, photos, first, lang, env, fetchImpl) {
   const claims = [
     `Write in ${LANGS[lang]}.`,
     `Listing: ${listing.title}, ${listing.year || "?"}, ${listing.km ?? "?"} km.`,
     `Seller says the color is: ${listing.color || "not stated"}.`,
     `Seller's extras: ${listing.extras.join(", ") || "none listed"}.`,
     `Seller's description: <<<${listing.description.slice(0, 1200)}>>>`,
-    `${listing.photos.length} photos follow, numbered in order.`,
+    `${photos.length} photos follow, numbered ${first} to ${first + photos.length - 1} (of ${listing.photos.length} in the listing). Use these numbers.`,
   ].join("\n");
   const v = await chat(env, fetchImpl, [
     { role: "system", content: VISION_PROMPT },
-    { role: "user", content: [{ type: "text", text: claims }, ...listing.photos.map((url) => ({ type: "image_url", image_url: { url } }))] },
+    { role: "user", content: [{ type: "text", text: claims }, ...photos.map((url) => ({ type: "image_url", image_url: { url } }))] },
   ], 900);
   return {
     color_seen: typeof v.color_seen === "string" ? v.color_seen.slice(0, 60) : null,
     color_matches_listing: typeof v.color_matches_listing === "boolean" ? v.color_matches_listing : null,
-    condition: ["good", "fair", "poor", "unclear"].includes(v.condition) ? v.condition : "unclear",
+    condition: CONDITION_RANK.includes(v.condition) ? v.condition : "unclear",
     damage: strings(v.damage),
     equipment_seen: strings(v.equipment_seen, 12),
     claimed_not_visible: strings(v.claimed_not_visible),
     concerns: strings(v.concerns),
+  };
+}
+
+const uniq = (items, max) => [...new Map(items.map((s) => [s.toLowerCase(), s])).values()].slice(0, max);
+
+async function inspectPhotos(listing, lang, env, fetchImpl) {
+  if (!listing.photos.length) return { photos_checked: 0, condition: "unclear", damage: [], equipment_seen: [], claimed_not_visible: [], concerns: ["The listing has no photos."] };
+  const batches = [];
+  for (let i = 0; i < listing.photos.length; i += PHOTOS_PER_CALL) batches.push(listing.photos.slice(i, i + PHOTOS_PER_CALL));
+  const settled = await Promise.allSettled(batches.map((b, i) => inspectBatch(listing, b, i * PHOTOS_PER_CALL + 1, lang, env, fetchImpl)));
+  const ok = settled.filter((r) => r.status === "fulfilled").map((r) => r.value);
+  if (!ok.length) throw new Error("photo check failed");
+  const checked = settled.reduce((n, r, i) => n + (r.status === "fulfilled" ? batches[i].length : 0), 0);
+  return {
+    photos_checked: checked,
+    photos_total: listing.photos.length,
+    color_seen: ok.map((v) => v.color_seen).find(Boolean) || null,
+    // A mismatch seen in any batch counts; a match needs at least one batch to confirm it.
+    color_matches_listing: ok.some((v) => v.color_matches_listing === false) ? false : ok.some((v) => v.color_matches_listing === true) ? true : null,
+    // The worst condition any batch saw.
+    condition: ok.map((v) => v.condition).reduce((a, b) => (CONDITION_RANK.indexOf(b) > CONDITION_RANK.indexOf(a) ? b : a), "unclear"),
+    damage: uniq(ok.flatMap((v) => v.damage), 12),
+    equipment_seen: uniq(ok.flatMap((v) => v.equipment_seen), 16),
+    claimed_not_visible: uniq(ok.flatMap((v) => v.claimed_not_visible), 10),
+    concerns: uniq(ok.flatMap((v) => v.concerns), 10),
   };
 }
 

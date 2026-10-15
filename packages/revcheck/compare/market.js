@@ -88,14 +88,30 @@ function quantileRow(prediction) {
 
 // Same fuel when both sides know it (a 320d and a 320i are different
 // markets), and no leasing ads or parts cars, which list far below the market.
+// Then the same engine variant: power within ±10% (a 163 hp and a 184 hp 320d
+// price differently), or engine size when the listing has no power figure.
+// That last step is skipped when it would leave too few cars to compare.
+const MIN_AFTER_ENGINE_MATCH = 8;
+
 function cleanComparables(listing, rows) {
   const sameFuel = rows.filter((r) => !(listing.fuel && r.fuel && listing.fuel !== r.fuel));
   const mid = median(sameFuel.map((r) => r.price_eur));
-  return sameFuel.filter((r) => r.price_eur >= mid * 0.35 && !/лизинг по|на части|за части/i.test(r.title || ""));
+  const real = sameFuel.filter((r) => r.price_eur >= mid * 0.35 && !/лизинг по|на части|за части/i.test(r.title || ""));
+  let engine = null;
+  let test = null;
+  if (listing.power_hp) {
+    engine = { by: "power_hp", value: listing.power_hp };
+    test = (r) => r.power_hp && Math.abs(r.power_hp - listing.power_hp) <= listing.power_hp * 0.1;
+  } else if (listing.engine_cc) {
+    engine = { by: "engine_cc", value: listing.engine_cc };
+    test = (r) => r.engine_cc && Math.abs(r.engine_cc - listing.engine_cc) <= 150;
+  }
+  const sameEngine = test ? real.filter(test) : [];
+  return sameEngine.length >= MIN_AFTER_ENGINE_MATCH ? { rows: sameEngine, engine } : { rows: real, engine: null };
 }
 
 async function marketFor(listing, comparables, searchUrl, { fetchImpl, tabpfnKey }) {
-  const rows = cleanComparables(listing, comparables);
+  const { rows, engine } = cleanComparables(listing, comparables);
   const prices = rows.map((r) => r.price_eur);
   let fair = null;
   let fair_error = null;
@@ -107,6 +123,7 @@ async function marketFor(listing, comparables, searchUrl, { fetchImpl, tabpfnKey
   return {
     search_url: searchUrl,
     comparables: rows.length,
+    engine_matched: engine,
     percentile: pricePercentile(listing.price_eur, prices),
     median_eur: median(prices),
     min_eur: prices.length ? Math.min(...prices) : null,

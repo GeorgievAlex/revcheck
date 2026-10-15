@@ -56,6 +56,8 @@ const T = {
     over: (d) => `${d} above the expected price`,
     under: (d) => `${d} below the expected price`,
     seeComps: "See the similar listings",
+    matched: (e) => `Same model, body type and fuel, year ±1${e ? (e.by === "power_hp" ? `, ${e.value} hp ±10%` : `, ${e.value} cc ±150`) : ""}.`,
+    photosChecked: (n, m) => `${n} of ${m} photos checked.`,
     photos: "What the photos show",
     condition: { good: "Looks good", fair: "Some wear", poor: "Visible problems", unclear: "Photos don't tell" },
     colorSeen: (c, ok) => `Color in photos: ${c}${ok === false ? " (doesn't match the listing)" : ""}`,
@@ -125,6 +127,8 @@ const T = {
     over: (d) => `${d} над очакваната цена`,
     under: (d) => `${d} под очакваната цена`,
     seeComps: "Вижте подобните обяви",
+    matched: (e) => `Същият модел, купе и гориво, година ±1${e ? (e.by === "power_hp" ? `, ${e.value} к.с. ±10%` : `, ${e.value} куб.см ±150`) : ""}.`,
+    photosChecked: (n, m) => `Проверени ${n} от ${m} снимки.`,
     photos: "Какво показват снимките",
     condition: { good: "Изглежда добре", fair: "Има износване", poor: "Видими проблеми", unclear: "Снимките не показват" },
     colorSeen: (c, ok) => `Цвят на снимките: ${c}${ok === false ? " (не съвпада с обявата)" : ""}`,
@@ -216,6 +220,7 @@ function marketBlock(m) {
       el("p", { class: d > 0 ? "bad" : "good" }, d > 0 ? s.over(eur(d)) : s.under(eur(-d))),
     );
   }
+  if (m.comparables) out.push(el("p", { class: "muted small" }, s.matched(m.engine_matched)));
   if (m.search_url) out.push(el("p", { class: "small" }, el("a", { href: m.search_url, rel: "noopener", target: "_blank" }, s.seeComps)));
   return out;
 }
@@ -226,6 +231,7 @@ function visionBlock(v) {
   return [
     el("h4", {}, s.photos),
     el("p", {}, el("span", { class: `pill ${v.condition}` }, s.condition[v.condition])),
+    v.photos_total ? el("p", { class: "muted small" }, s.photosChecked(v.photos_checked, v.photos_total)) : null,
     v.color_seen ? el("p", { class: v.color_matches_listing === false ? "bad" : "" }, s.colorSeen(v.color_seen, v.color_matches_listing)) : null,
     ...list(s.damage, v.damage, "bad"),
     ...list(s.notVisible, v.claimed_not_visible, "bad"),

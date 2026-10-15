@@ -97,7 +97,9 @@ test("parseSearchCards turns mobile.bg result cards into rows", () => {
 
 test("searchPath falls back to make/model slugs for cars.bg listings", () => {
   assert.equal(L.searchPath({ search_path: "bmw/320" }), "bmw/320");
-  assert.equal(L.searchPath({ make: "Audi", model: "Q5" }), "audi/q5");
+  assert.equal(L.searchPath({ search_path: "bmw/320", body: "Комби", fuel: "diesel" }), "bmw/320/kombi/dizelov");
+  assert.equal(L.searchPath({ make: "Audi", model: "Q5", body: "Джип", fuel: "plug-in hybrid" }), "audi/q5/dzhip");
+  assert.equal(L.searchPath({ make: "", model: "" }), null);
   assert.equal(L.searchUrl("audi/q5", 2012, 2), "https://www.mobile.bg/obiavi/avtomobili-dzhipove/audi/q5/ot-2011/do-2013/p-2");
 });
 
@@ -146,7 +148,20 @@ test("flags: VIN and mileage per year", () => {
 test("cleanComparables drops other fuels, leasing ads and parts cars", () => {
   const row = (price_eur, fuel = "diesel", title = "BMW 320") => ({ price_eur, fuel, title, year: 2013 });
   const rows = [row(8000), row(8500), row(9000), row(9500, "petrol"), row(2000), row(7000, "diesel", "BMW 320 лизинг по 186 €")];
-  assert.deepEqual(M.cleanComparables({ fuel: "diesel" }, rows).map((r) => r.price_eur), [8000, 8500, 9000]);
+  const out = M.cleanComparables({ fuel: "diesel" }, rows);
+  assert.deepEqual(out.rows.map((r) => r.price_eur), [8000, 8500, 9000]);
+  assert.equal(out.engine, null);
+});
+
+test("cleanComparables matches the engine variant when enough cars remain", () => {
+  const rows = [...Array(8).fill({ price_eur: 9000, power_hp: 184 }), ...Array(5).fill({ price_eur: 7000, power_hp: 163 })];
+  const by184 = M.cleanComparables({ power_hp: 184 }, rows);
+  assert.equal(by184.rows.length, 8);
+  assert.deepEqual(by184.engine, { by: "power_hp", value: 184 });
+  // Only 5 cars at 163 hp: too few, so all 13 stay and no engine match is claimed.
+  const by163 = M.cleanComparables({ power_hp: 163 }, rows);
+  assert.equal(by163.rows.length, 13);
+  assert.equal(by163.engine, null);
 });
 
 const goodCar = (url, extra = {}) => ({

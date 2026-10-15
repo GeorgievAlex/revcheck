@@ -4,7 +4,7 @@
 // siteOf() is the allowlist; the extension enforces its own copy.
 
 const BGN_PER_EUR = 1.95583;
-const MAX_PHOTOS = 6;
+const MAX_PHOTOS = 24;
 const MULTI_WORD_MAKES = ["alfa romeo", "aston martin", "land rover", "mercedes-benz", "rolls-royce"];
 
 function siteOf(input) {
@@ -170,7 +170,17 @@ function parseCars(html, url) {
 
 const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
+// mobile.bg filters search results by body type and fuel in the path, e.g.
+// /bmw/320/kombi/dizelov/ot-2012/do-2014. Plug-in hybrids have no filter.
+const BODY_SLUGS = { Седан: "sedan", Комби: "kombi", Хечбек: "hechbek", Купе: "kupe", Кабрио: "kabrio", Джип: "dzhip", Ван: "van", Миниван: "minivan", Пикап: "pikap" };
+const FUEL_SLUGS = { diesel: "dizelov", petrol: "benzinov", hybrid: "hibriden", electric: "elektricheski" };
+
 function searchPath(listing) {
+  const model = modelPath(listing);
+  return model ? [model, BODY_SLUGS[listing.body], FUEL_SLUGS[listing.fuel]].filter(Boolean).join("/") : null;
+}
+
+function modelPath(listing) {
   if (listing.search_path) return listing.search_path;
   const make = slug(listing.make);
   const model = slug(listing.model);

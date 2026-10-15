@@ -4,13 +4,13 @@
 // cookies:
 //   - a mobile.bg listing      https://www.mobile.bg/obiava-…
 //   - a cars.bg listing        https://www.cars.bg/offer/…
-//   - a mobile.bg search page  https://www.mobile.bg/obiavi/avtomobili-dzhipove/<make>/<model>/ot-YYYY/do-YYYY[/p-N]
+//   - a mobile.bg search page  https://www.mobile.bg/obiavi/avtomobili-dzhipove/<make>/<model>[/<body>][/<fuel>]/ot-YYYY/do-YYYY[/p-N]
 // and only when asked by the RevCheck page (content.js).
 
 const ALLOWED = [
   /^https:\/\/www\.mobile\.bg\/obiava-\d+[\w-]*$/,
   /^https:\/\/www\.cars\.bg\/offer\/[0-9a-f]{24}$/,
-  /^https:\/\/www\.mobile\.bg\/obiavi\/avtomobili-dzhipove\/[a-z0-9-]+\/[a-z0-9-]+\/ot-\d{4}\/do-\d{4}(\/p-[1-3])?$/,
+  /^https:\/\/www\.mobile\.bg\/obiavi\/avtomobili-dzhipove\/[a-z0-9-]+\/[a-z0-9-]+(\/[a-z-]+){0,2}\/ot-\d{4}\/do-\d{4}(\/p-[1-3])?$/,
 ];
 
 async function read(url) {
