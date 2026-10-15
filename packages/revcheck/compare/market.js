@@ -1,4 +1,5 @@
 "use strict";
+const { bodyKey } = require("./listing.js");
 // Where a listing sits in the market, from comparable mobile.bg listings the
 // visitor's browser collected (same make/model, year ±1): the percentile, the
 // range, and a TabPFN fair-price range trained on those rows.
@@ -86,15 +87,17 @@ function quantileRow(prediction) {
   return p;
 }
 
-// Same fuel when both sides know it (a 320d and a 320i are different
-// markets), and no leasing ads or parts cars, which list far below the market.
+// Same fuel and body type when both sides know them (a 320d and a 320i, or a
+// coupe and a sedan, are different markets; the search URL filters these too,
+// this catches what it misses), and no leasing ads or parts cars, which list far below the market.
 // Then the same engine variant: power within ±10% (a 163 hp and a 184 hp 320d
 // price differently), or engine size when the listing has no power figure.
 // That last step is skipped when it would leave too few cars to compare.
 const MIN_AFTER_ENGINE_MATCH = 8;
 
 function cleanComparables(listing, rows) {
-  const sameFuel = rows.filter((r) => !(listing.fuel && r.fuel && listing.fuel !== r.fuel));
+  const body = bodyKey(listing.body);
+  const sameFuel = rows.filter((r) => !(listing.fuel && r.fuel && listing.fuel !== r.fuel) && !(body && r.body && bodyKey(r.body) !== body));
   const mid = median(sameFuel.map((r) => r.price_eur));
   const real = sameFuel.filter((r) => r.price_eur >= mid * 0.35 && !/лизинг по|на части|за части/i.test(r.title || ""));
   let engine = null;
@@ -122,6 +125,7 @@ async function marketFor(listing, comparables, searchUrl, { fetchImpl, tabpfnKey
   }
   return {
     search_url: searchUrl,
+    years: searchUrl && (searchUrl.match(/ot-(\d{4})\/do-(\d{4})/) || []).slice(1).map(Number),
     comparables: rows.length,
     engine_matched: engine,
     percentile: pricePercentile(listing.price_eur, prices),

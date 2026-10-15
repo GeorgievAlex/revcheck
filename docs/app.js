@@ -41,7 +41,7 @@ const T = {
     over: (d) => `${d} above the expected price`,
     under: (d) => `${d} below the expected price`,
     seeComps: "See the similar listings",
-    matched: (e) => `Same model, body type and fuel, year ±1${e ? (e.by === "power_hp" ? `, ${e.value} hp ±10%` : `, ${e.value} cc ±150`) : ""}.`,
+    matched: (e, y) => `Same model, body type and fuel, ${y && y.length === 2 ? `${y[0]}–${y[1]}` : "year ±1"}${e ? (e.by === "power_hp" ? `, ${e.value} hp ±10%` : `, ${e.value} cc ±150`) : ""}.`,
     photosChecked: (n, m) => `${n} of ${m} photos checked.`,
     photos: "What the photos show",
     condition: { good: "Looks good", fair: "Some wear", poor: "Visible problems", unclear: "Photos don't tell" },
@@ -58,6 +58,7 @@ const T = {
       km_low: (f) => `Only ~${f.per_year.toLocaleString("en")} km a year. Possible, but ask for service records to back it up.`,
       km_high: (f) => `~${f.per_year.toLocaleString("en")} km a year, well above average.`,
       few_photos: (f) => `Only ${f.count} photo${f.count === 1 ? "" : "s"}. Ask for more, especially the sides and the dashboard with the engine running.`,
+      us_import: () => "Imported from the USA or Canada. Run the VIN through a history check (Carfax, AutoCheck) for auction or accident records before you go.",
       odometer_check: (f) => `The dash in photo ${f.photo ?? "?"} seems to read ${f.seen_km.toLocaleString("en")} km, but the listing says ${f.listed_km.toLocaleString("en")} km. Photo readings can be wrong: check the odometer in person.`,
     },
     open: "Open listing",
@@ -100,7 +101,7 @@ const T = {
     over: (d) => `${d} над пазарната цена`,
     under: (d) => `${d} под пазарната цена`,
     seeComps: "Виж подобните обяви",
-    matched: (e) => `Сравнено със същия модел, купе и гориво, година ±1${e ? (e.by === "power_hp" ? `, ${e.value} к.с. ±10%` : `, ${e.value} куб.см ±150`) : ""}.`,
+    matched: (e, y) => `Сравнено със същия модел, купе и гориво, ${y && y.length === 2 ? `${y[0]}–${y[1]} г.` : "година ±1"}${e ? (e.by === "power_hp" ? `, ${e.value} к.с. ±10%` : `, ${e.value} куб.см ±150`) : ""}.`,
     photosChecked: (n, m) => `Разгледани ${n} от ${m} снимки.`,
     photos: "Какво се вижда на снимките",
     condition: { good: "В добро състояние", fair: "С износване", poor: "С видими проблеми", unclear: "Не личи от снимките" },
@@ -117,6 +118,7 @@ const T = {
       km_low: (f) => `Само ~${f.per_year.toLocaleString("bg")} км на година. Възможно е, но поискайте сервизна история.`,
       km_high: (f) => `~${f.per_year.toLocaleString("bg")} км на година, доста над средното.`,
       few_photos: (f) => `Само ${f.count} снимки. Поискайте още, особено страните и таблото със запален двигател.`,
+      us_import: () => "Внос от САЩ или Канада. Проверете VIN номера в Carfax или AutoCheck за аукционна история и катастрофи преди оглед.",
       odometer_check: (f) => `Таблото на снимка ${f.photo ?? "?"} изглежда показва ${f.seen_km.toLocaleString("bg")} км, а в обявата пише ${f.listed_km.toLocaleString("bg")} км. Разчитането от снимка може да греши: проверете километража на място.`,
     },
     open: "Към обявата",
@@ -198,7 +200,7 @@ function marketBlock(m) {
       el("p", { class: d > 0 ? "bad" : "good" }, d > 0 ? s.over(eur(d)) : s.under(eur(-d))),
     );
   }
-  if (m.comparables) out.push(el("p", { class: "muted small" }, s.matched(m.engine_matched)));
+  if (m.comparables) out.push(el("p", { class: "muted small" }, s.matched(m.engine_matched, m.years)));
   if (m.search_url) out.push(el("p", { class: "small" }, el("a", { href: m.search_url, rel: "noopener", target: "_blank" }, s.seeComps)));
   return out;
 }
@@ -249,7 +251,7 @@ function render(data) {
   const v = data.verdict;
   const winner = v && v.winner;
   $("verdict").replaceChildren(
-    data.lang && data.lang !== lang ? el("p", { class: "muted small" }, s.otherLang) : null,
+    ...(data.lang && data.lang !== lang ? [el("p", { class: "muted small" }, s.otherLang)] : []),
     ...(v
       ? [
           el("p", { class: "car-label" }, winner === "even" ? s.even : `${s.better}: ${winner === "a" ? s.labelA : s.labelB}`),

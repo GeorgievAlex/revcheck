@@ -7,6 +7,9 @@
 
 const USER_AGENT = "RevCheck/0.1 (+https://github.com/GeorgievAlex/revcheck)";
 const SEARCH_PAGES = 3;
+// Rare variants (a 328i coupe) can have only 3-4 matches at year ±1, too few
+// to place a price; then the search widens to ±2 years.
+const WIDEN_BELOW = 8;
 const BGN_PER_EUR = 1.95583;
 const MAX_PHOTOS = 24;
 const MULTI_WORD_MAKES = ["alfa romeo", "aston martin", "land rover", "mercedes-benz", "rolls-royce"];
@@ -176,12 +179,17 @@ const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").re
 
 // mobile.bg filters search results by body type and fuel in the path, e.g.
 // /bmw/320/kombi/dizelov/ot-2012/do-2014. Plug-in hybrids have no filter.
-const BODY_SLUGS = { Седан: "sedan", Комби: "kombi", Хечбек: "hechbek", Купе: "kupe", Кабрио: "kabrio", Джип: "dzhip", Ван: "van", Миниван: "minivan", Пикап: "pikap" };
+const BODY_SLUGS = { седан: "sedan", комби: "kombi", хечбек: "hechbek", купе: "kupe", кабрио: "kabrio", джип: "dzhip", ван: "van", миниван: "minivan", пикап: "pikap" };
+
+// Sellers mix in Latin look-alikes ("Kупе" with a Latin K), so body types are
+// compared after mapping those letters to Cyrillic.
+const LOOKALIKES = { a: "а", b: "в", c: "с", e: "е", h: "н", k: "к", m: "м", o: "о", p: "р", t: "т", x: "х", y: "у" };
+const bodyKey = (s) => String(s || "").trim().toLowerCase().replace(/[abcehkmoptxy]/g, (ch) => LOOKALIKES[ch]);
 const FUEL_SLUGS = { diesel: "dizelov", petrol: "benzinov", hybrid: "hibriden", electric: "elektricheski" };
 
 function searchPath(listing) {
   const model = modelPath(listing);
-  return model ? [model, BODY_SLUGS[listing.body], FUEL_SLUGS[listing.fuel]].filter(Boolean).join("/") : null;
+  return model ? [model, BODY_SLUGS[bodyKey(listing.body)], FUEL_SLUGS[listing.fuel]].filter(Boolean).join("/") : null;
 }
 
 function modelPath(listing) {
@@ -191,8 +199,8 @@ function modelPath(listing) {
   return make && model ? `${make}/${model}` : null;
 }
 
-const searchUrl = (path, year, page) =>
-  `https://www.mobile.bg/obiavi/avtomobili-dzhipove/${path}/ot-${year - 1}/do-${year + 1}${page > 1 ? `/p-${page}` : ""}`;
+const searchUrl = (path, year, page, span = 1) =>
+  `https://www.mobile.bg/obiavi/avtomobili-dzhipove/${path}/ot-${year - span}/do-${year + span}${page > 1 ? `/p-${page}` : ""}`;
 
 const MONTHS = /(януари|февруари|март|април|май|юни|юли|август|септември|октомври|ноември|декември)\s+((?:19|20)\d{2})/;
 
@@ -221,6 +229,7 @@ function parseSearchCards(html) {
       engine_cc: num(/куб\.см$/),
       fuel: fuel ? (/Дизел/.test(fuel) ? "diesel" : /Хибрид/.test(fuel) ? "hybrid" : /Електр/.test(fuel) ? "electric" : "petrol") : null,
       gearbox: find(/Автоматична/) ? "automatic" : find(/Ръчна/) ? "manual" : null,
+      body: spans.map(bodyKey).find((s) => s in BODY_SLUGS) || null,
     });
   }
   return rows;
@@ -251,11 +260,19 @@ async function gatherCar(target, read) {
   if (!listing.title || !listing.price_eur) throw new Error("couldn't read the listing (it may have been removed)");
   const path = searchPath(listing);
   if (!path || !listing.year) return { listing, comparables: [], search_url: null };
-  const pages = await Promise.all(Array.from({ length: SEARCH_PAGES }, (_, i) => read(searchUrl(path, listing.year, i + 1)).catch(() => "")));
   const ownId = (target.url.match(/obiava-(\d+)/) || [])[1];
-  const seen = new Set();
-  const comparables = pages.flatMap(parseSearchCards).filter((r) => r.id !== ownId && !seen.has(r.id) && seen.add(r.id));
-  return { listing, comparables, search_url: searchUrl(path, listing.year, 1) };
+  const search = async (span) => {
+    const pages = await Promise.all(Array.from({ length: SEARCH_PAGES }, (_, i) => read(searchUrl(path, listing.year, i + 1, span)).catch(() => "")));
+    const seen = new Set();
+    return pages.flatMap(parseSearchCards).filter((r) => r.id !== ownId && !seen.has(r.id) && seen.add(r.id));
+  };
+  let span = 1;
+  let comparables = await search(span);
+  if (comparables.length < WIDEN_BELOW) {
+    span = 2;
+    comparables = await search(span);
+  }
+  return { listing, comparables, search_url: searchUrl(path, listing.year, 1, span) };
 }
 
-module.exports = { siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, gatherCar, BGN_PER_EUR };
+module.exports = { bodyKey, siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, gatherCar, BGN_PER_EUR };

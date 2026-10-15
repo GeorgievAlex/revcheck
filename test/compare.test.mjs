@@ -91,7 +91,7 @@ test("parseSearchCards turns mobile.bg result cards into rows", () => {
     <div class="price "><div>${price}</div></div>
     <div class="params"><span>юли ${year} г.</span> <span> ${km} км</span> <span>Дизелов</span> <span>184 к.с.</span> <span>Автоматична</span></div></div>`;
   const rows = L.parseSearchCards(`x${card("1", "3 200 €", 2013, "251 000")}${card("2", "По договаряне", 2013, "1")}`);
-  assert.deepEqual(rows, [{ id: "1", title: "BMW 320", price_eur: 3200, year: 2013, km: 251000, power_hp: 184, engine_cc: null, fuel: "diesel", gearbox: "automatic" }]);
+  assert.deepEqual(rows, [{ id: "1", title: "BMW 320", price_eur: 3200, year: 2013, km: 251000, power_hp: 184, engine_cc: null, fuel: "diesel", gearbox: "automatic", body: null }]);
 });
 
 test("searchPath falls back to make/model slugs for cars.bg listings", () => {
@@ -99,6 +99,8 @@ test("searchPath falls back to make/model slugs for cars.bg listings", () => {
   assert.equal(L.searchPath({ search_path: "bmw/320", body: "Комби", fuel: "diesel" }), "bmw/320/kombi/dizelov");
   assert.equal(L.searchPath({ make: "Audi", model: "Q5", body: "Джип", fuel: "plug-in hybrid" }), "audi/q5/dzhip");
   assert.equal(L.searchPath({ make: "", model: "" }), null);
+  // A Latin "K" in "Kупе", as one cars.bg seller typed it.
+  assert.equal(L.searchPath({ make: "BMW", model: "328", body: "Kупе", fuel: "petrol" }), "bmw/328/kupe/benzinov");
   assert.equal(L.searchUrl("audi/q5", 2012, 2), "https://www.mobile.bg/obiavi/avtomobili-dzhipove/audi/q5/ot-2011/do-2013/p-2");
 });
 
@@ -148,6 +150,8 @@ test("cleanComparables drops other fuels, leasing ads and parts cars", () => {
   const row = (price_eur, fuel = "diesel", title = "BMW 320") => ({ price_eur, fuel, title, year: 2013 });
   const rows = [row(8000), row(8500), row(9000), row(9500, "petrol"), row(2000), row(7000, "diesel", "BMW 320 лизинг по 186 €")];
   const out = M.cleanComparables({ fuel: "diesel" }, rows);
+  const coupes = M.cleanComparables({ body: "Kупе" }, [{ price_eur: 9000, body: "Купе" }, { price_eur: 9000, body: "Седан" }, { price_eur: 9000 }]);
+  assert.deepEqual(coupes.rows.map((r) => r.body), ["Купе", undefined]);
   assert.deepEqual(out.rows.map((r) => r.price_eur), [8000, 8500, 9000]);
   assert.equal(out.engine, null);
 });
@@ -229,8 +233,8 @@ test("gatherCar reads the listing and 3 filtered search pages, skipping itself",
   const car = await L.gatherCar({ site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw" }, read);
   assert.equal(car.listing.price_eur, 8947);
   assert.deepEqual(car.comparables.map((r) => r.id), ["5", "6"]);
-  assert.equal(car.search_url, "https://www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320/kombi/dizelov/ot-2012/do-2014");
-  assert.equal(asked.length, 4);
+  assert.equal(asked.length, 7); // 3 pages at ±1 found only 2 cars, so 3 more at ±2
+  assert.equal(car.search_url, "https://www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320/kombi/dizelov/ot-2011/do-2015");
   await assert.rejects(L.gatherCar({ site: "mobile", url: "https://www.mobile.bg/obiava-1" }, async () => "<html></html>"), /couldn't read/);
 });
 
@@ -243,6 +247,12 @@ test("odometer flag needs a clear reading off by more than 15%, and never comes 
   assert.deepEqual(F.flags(listing, now, { odometer: { km: 266777, photo: 10, clear: true } })[0], {
     code: "odometer_check", photo: 10, seen_km: 266777, listed_km: 104000,
   });
+});
+
+test("us_import flag comes from the listing text", () => {
+  const base = { photos: [1, 2, 3, 4], vin: "X", title: "BMW 328" };
+  assert.ok(F.flags({ ...base, description: "Нов внос от САЩ." }).some((f) => f.code === "us_import"));
+  assert.ok(!F.flags({ ...base, description: "Нов внос от Швейцария." }).some((f) => f.code === "us_import"));
 });
 
 test("handle rejects bad input before any fetch", async () => {

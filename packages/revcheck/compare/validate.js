@@ -63,6 +63,7 @@ function comparable(raw) {
     engine_cc: int(raw.engine_cc, 1, 10000),
     fuel: oneOf(raw.fuel, FUELS),
     gearbox: oneOf(raw.gearbox, GEARBOXES),
+    body: str(raw.body, 40),
   };
 }
 
