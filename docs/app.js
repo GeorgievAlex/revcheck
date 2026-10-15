@@ -1,4 +1,5 @@
 import { FUNCTION_URL, TURNSTILE_SITEKEY } from "./config.js";
+import { relabelThemeToggle } from "./theme.js";
 
 
 const $ = (id) => document.getElementById(id);
@@ -24,6 +25,7 @@ const T = {
     ask: "Ask the seller",
     watch: "Check in person",
     noVerdict: "The written verdict couldn't be generated this time, but the facts below are complete.",
+    otherLang: "This report was written in Bulgarian. Click Compare again for an English one.",
     price: "Price",
     year: "Year",
     km: "Mileage",
@@ -82,6 +84,7 @@ const T = {
     ask: "Попитайте продавача",
     watch: "Проверете на място",
     noVerdict: "Този път не се получи писмена препоръка, но фактите по-долу са пълни.",
+    otherLang: "Този отчет е написан на английски. Натиснете Сравни отново за отчет на български.",
     price: "Цена",
     year: "Година",
     km: "Пробег",
@@ -123,13 +126,15 @@ const T = {
   },
 };
 
-// A remembered choice wins; otherwise follow the browser language.
+// ?lang=bg in the link wins, then a remembered choice, then the browser language.
 let lang = (navigator.language || "").startsWith("bg") ? "bg" : "en";
 try {
   lang = localStorage.getItem(LANG_KEY) || lang;
 } catch {
   // Storage can be blocked; the browser language still applies.
 }
+const linkLang = new URLSearchParams(location.search).get("lang");
+if (linkLang) lang = linkLang;
 if (!T[lang]) lang = "en";
 let lastResult = null;
 
@@ -157,13 +162,15 @@ function setStatus(text, isError = false) {
 function applyLang() {
   document.documentElement.lang = lang;
   for (const node of document.querySelectorAll("[data-i18n]")) node.textContent = t()[node.dataset.i18n];
-  $("lang-toggle").textContent = lang === "en" ? "БГ" : "EN";
-  $("lang-toggle").setAttribute("aria-label", lang === "en" ? "Превключи на български" : "Switch to English");
+  for (const button of document.querySelectorAll("[data-lang]")) button.setAttribute("aria-pressed", String(button.dataset.lang === lang));
+  relabelThemeToggle();
   if (lastResult) render(lastResult);
 }
 
-$("lang-toggle").addEventListener("click", () => {
-  lang = lang === "en" ? "bg" : "en";
+document.querySelector(".lang-switch").addEventListener("click", (event) => {
+  const choice = event.target.closest("[data-lang]");
+  if (!choice || choice.dataset.lang === lang) return;
+  lang = choice.dataset.lang;
   try {
     localStorage.setItem(LANG_KEY, lang);
   } catch {
@@ -242,6 +249,7 @@ function render(data) {
   const v = data.verdict;
   const winner = v && v.winner;
   $("verdict").replaceChildren(
+    data.lang && data.lang !== lang ? el("p", { class: "muted small" }, s.otherLang) : null,
     ...(v
       ? [
           el("p", { class: "car-label" }, winner === "even" ? s.even : `${s.better}: ${winner === "a" ? s.labelA : s.labelB}`),
@@ -302,6 +310,7 @@ $("compare-form").addEventListener("submit", async (event) => {
   if (!turnstileToken) return setStatus(s.tickBox, true);
   $("go").disabled = true;
   setStatus(s.working);
+  const requestLang = lang;
   try {
     // text/plain keeps this a CORS simple request (no preflight).
     const res = await fetch(FUNCTION_URL, {
@@ -312,7 +321,7 @@ $("compare-form").addEventListener("submit", async (event) => {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setStatus(data.error || `Error ${res.status}`, true);
     setStatus("");
-    lastResult = data;
+    lastResult = { ...data, lang: requestLang };
     render(data);
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch {

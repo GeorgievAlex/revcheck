@@ -11,10 +11,22 @@ export function otherTheme(theme) {
   return theme === "light" ? "dark" : "light";
 }
 
+const WORDS = {
+  en: { light: "☀ Light", dark: "☾ Dark", aria: (t) => `Switch to ${t} theme` },
+  bg: { light: "☀ Светла", dark: "☾ Тъмна", aria: (t) => (t === "light" ? "Светла тема" : "Тъмна тема") },
+};
+
 function label(button, theme) {
   const next = otherTheme(theme);
-  button.textContent = next === "light" ? "☀ Light" : "☾ Dark";
-  button.setAttribute("aria-label", `Switch to ${next} theme`);
+  const w = WORDS[document.documentElement.lang] || WORDS.en;
+  button.textContent = w[next];
+  button.setAttribute("aria-label", w.aria(next));
+}
+
+// Re-labels the toggle after the page language changes.
+export function relabelThemeToggle() {
+  const button = document.getElementById("theme-toggle");
+  if (button) label(button, resolveTheme(document.documentElement.dataset.theme));
 }
 
 export function initThemeToggle(button) {
