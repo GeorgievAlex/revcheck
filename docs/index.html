@@ -6,7 +6,7 @@
   <title>RevCheck: which car is the better buy?</title>
   <meta name="description" content="Paste two used-car listings from mobile.bg or cars.bg. Open-weight AI checks the photos, the price against the market and the red flags, then tells you which one to go see.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=ae201a5-mv9dv4rj">
   <script>try { if (localStorage.getItem("revcheck-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script></head>
 <body>
   <header class="site">
@@ -47,7 +47,6 @@
     <p data-i18n="footer">The two links are sent to a DigitalOcean Function. It reads the public listings through a small Cloudflare Worker, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
     <p><a href="https://github.com/GeorgievAlex/revcheck">Source</a></p>
   </footer>
-  <script type="module" src="theme.js"></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=ae201a5-mv9dv4rj"></script>
 </body>
 </html>

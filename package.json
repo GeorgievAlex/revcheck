@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "try": "node scripts/try-compare.mjs"
+    "try": "node scripts/try-compare.mjs",
+    "stamp": "node scripts/stamp.mjs"
   },
   "engines": {
     "node": ">=18"

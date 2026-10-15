@@ -344,6 +344,8 @@ async function handle({ method, rawBody, ip = "" }, { env, fetchImpl, now = Date
     return fail(400, "Body must be valid JSON.");
   }
   const lang = input.lang === "bg" ? "bg" : "en";
+  // A page cached from before the split sends {urls, turnstile} without a step.
+  if (!input.step && input.urls) return fail(409, "RevCheck was just updated. Refresh the page and try again.");
 
   if (input.step === "start") {
     const { targets, error } = targetsFrom(input.urls);
