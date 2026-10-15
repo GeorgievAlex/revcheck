@@ -14,7 +14,8 @@ packages:
           web-custom-options: true
         environment:
           DO_INFERENCE_KEY: ${DO_INFERENCE_KEY}
-          TABPFN_KEY: ${TABPFN_KEY}
+          # Add once .env has a Prior Labs key (doctl refuses an empty one):
+          # TABPFN_KEY: (same dollar-brace form as the keys above)
           MODEL: gemma-4-31B-it
           ALLOWED_ORIGIN: https://georgievalex.github.io
           TURNSTILE_SECRET: ${TURNSTILE_SECRET}
