@@ -218,7 +218,7 @@ test("pageReader goes through the reader Worker with the secret, and decodes win
   await assert.rejects(failing("https://www.mobile.bg/obiava-1"), /HTTP 403/);
 });
 
-test("gatherCar reads the listing and 3 filtered search pages, skipping itself", async () => {
+test("readListing and findComparables: listing, then 3 filtered search pages, skipping itself", async () => {
   const listingHtml = `<h1>BMW 320 <span>2.0d</span> <div class="obiava">x</div></h1><div class="Price">8 947 €</div>
     <div class="item"><div>Дата на производство</div><div>февруари 2013</div></div>
     <div class="item"><div>Двигател</div><div>Дизелов</div></div>
@@ -230,12 +230,14 @@ test("gatherCar reads the listing and 3 filtered search pages, skipping itself",
     asked.push(url);
     return url.includes("obiava-") ? listingHtml : `x${card("117")}${card("5")}${card("6")}`;
   };
-  const car = await L.gatherCar({ site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw" }, read);
-  assert.equal(car.listing.price_eur, 8947);
+  const target = { site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw" };
+  const listing = await L.readListing(target, read);
+  assert.equal(listing.price_eur, 8947);
+  const car = await L.findComparables(listing, target, read);
   assert.deepEqual(car.comparables.map((r) => r.id), ["5", "6"]);
   assert.equal(asked.length, 7); // 3 pages at ±1 found only 2 cars, so 3 more at ±2
   assert.equal(car.search_url, "https://www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320/kombi/dizelov/ot-2011/do-2015");
-  await assert.rejects(L.gatherCar({ site: "mobile", url: "https://www.mobile.bg/obiava-1" }, async () => "<html></html>"), /couldn't read/);
+  await assert.rejects(L.readListing({ site: "mobile", url: "https://www.mobile.bg/obiava-1" }, async () => "<html></html>"), /couldn't read/);
 });
 
 test("odometer flag needs a clear reading off by more than 15%, and never comes from the model's wording", () => {

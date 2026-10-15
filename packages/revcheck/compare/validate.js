@@ -84,4 +84,11 @@ function cars(raw) {
   return out;
 }
 
-module.exports = { cars, InputError, PHOTO_URL, LISTING_URL };
+const comparables = (rows) => {
+  if (!Array.isArray(rows)) return [];
+  if (rows.length > MAX_COMPARABLES) throw new InputError("Too many comparables.");
+  return rows.map(comparable).filter(Boolean);
+};
+const searchUrl = (u) => (typeof u === "string" && SEARCH_URL.test(u) ? u : null);
+
+module.exports = { cars, listing, comparables, searchUrl, InputError, PHOTO_URL, LISTING_URL };

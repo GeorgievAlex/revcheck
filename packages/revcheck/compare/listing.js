@@ -251,15 +251,19 @@ function pageReader(env, fetchImpl) {
   };
 }
 
-// One car: its listing, plus similar mobile.bg listings (same make/model,
-// body type and fuel, year ±1). cars.bg listings are matched against
-// mobile.bg too: cars.bg search needs ids its listing pages don't expose.
-async function gatherCar(target, read) {
+async function readListing(target, read) {
   const html = await read(target.url);
   const listing = target.site === "mobile" ? parseMobile(html, target.url) : parseCars(html, target.url);
   if (!listing.title || !listing.price_eur) throw new Error("couldn't read the listing (it may have been removed)");
+  return listing;
+}
+
+// Similar mobile.bg listings: same make/model, body type and fuel, year ±1.
+// cars.bg listings are matched against mobile.bg too: cars.bg search needs
+// ids its listing pages don't expose.
+async function findComparables(listing, target, read) {
   const path = searchPath(listing);
-  if (!path || !listing.year) return { listing, comparables: [], search_url: null };
+  if (!path || !listing.year) return { comparables: [], search_url: null };
   const ownId = (target.url.match(/obiava-(\d+)/) || [])[1];
   const search = async (span) => {
     const pages = await Promise.all(Array.from({ length: SEARCH_PAGES }, (_, i) => read(searchUrl(path, listing.year, i + 1, span)).catch(() => "")));
@@ -272,7 +276,7 @@ async function gatherCar(target, read) {
     span = 2;
     comparables = await search(span);
   }
-  return { listing, comparables, search_url: searchUrl(path, listing.year, 1, span) };
+  return { comparables, search_url: searchUrl(path, listing.year, 1, span) };
 }
 
-module.exports = { bodyKey, siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, gatherCar, BGN_PER_EUR };
+module.exports = { bodyKey, siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, pageReader, readListing, findComparables, BGN_PER_EUR };

@@ -11,8 +11,8 @@
 // ALLOWED_ORIGIN, TURNSTILE_HOSTNAME.
 // Without TABPFN_KEY the fair-price range is skipped; everything else works.
 
-const { cars, InputError } = require("./validate.js");
-const { siteOf, pageReader, gatherCar } = require("./listing.js");
+const validate = require("./validate.js");
+const { siteOf, pageReader, readListing, findComparables } = require("./listing.js");
 const { marketFor } = require("./market.js");
 
 const INFERENCE_URL = "https://inference.do-ai.run/v1/chat/completions";
@@ -122,7 +122,9 @@ async function inspectPhotos(listing, lang, env, fetchImpl) {
   if (!listing.photos.length) return { photos_checked: 0, condition: "unclear", damage: [], equipment_seen: [], claimed_not_visible: [], concerns: ["The listing has no photos."] };
   const batches = [];
   for (let i = 0; i < listing.photos.length; i += PHOTOS_PER_CALL) batches.push(listing.photos.slice(i, i + PHOTOS_PER_CALL));
-  const settled = await Promise.allSettled(batches.map((b, i) => inspectBatch(listing, b, i * PHOTOS_PER_CALL + 1, lang, env, fetchImpl)));
+  // One retry per batch: a single failed call would otherwise drop 8 photos.
+  const once = (b, i) => inspectBatch(listing, b, i * PHOTOS_PER_CALL + 1, lang, env, fetchImpl);
+  const settled = await Promise.allSettled(batches.map((b, i) => once(b, i).catch(() => once(b, i))));
   const ok = settled.filter((r) => r.status === "fulfilled").map((r) => r.value);
   if (!ok.length) throw new Error("photo check failed");
   const checked = settled.reduce((n, r, i) => n + (r.status === "fulfilled" ? batches[i].length : 0), 0);
@@ -166,10 +168,25 @@ function flags(listing, now = Date.now(), vision = null) {
   return out;
 }
 
-async function analyzeOne({ listing, comparables, search_url }, lang, env, fetchImpl) {
+// Photos only need the listing, so they're checked while the market search
+// (up to two rounds of mobile.bg pages) is still running.
+async function analyzeOne(listing, target, read, lang, env, fetchImpl, timings, label) {
+  const timed = async (name, work) => {
+    const started = Date.now();
+    try {
+      return await work();
+    } catch {
+      return null;
+    } finally {
+      timings[`${name}_${label}`] = Date.now() - started;
+    }
+  };
   const [vision, market] = await Promise.all([
-    inspectPhotos(listing, lang, env, fetchImpl).catch(() => null),
-    marketFor(listing, comparables, search_url, { fetchImpl, tabpfnKey: env.TABPFN_KEY }).catch(() => null),
+    timed("photos", () => inspectPhotos(listing, lang, env, fetchImpl)),
+    timed("market", async () => {
+      const found = await findComparables(listing, target, read);
+      return marketFor(listing, validate.comparables(found.comparables), validate.searchUrl(found.search_url), { fetchImpl, tabpfnKey: env.TABPFN_KEY });
+    }),
   ]);
   return { listing, vision, market, flags: flags(listing, Date.now(), vision) };
 }
@@ -218,25 +235,31 @@ async function verifyTurnstile(token, ip, env, fetchImpl) {
 // through validate.js: the HTML is third-party, and Gemma fetches the photo
 // URLs, so only the sites' image CDNs get through.
 async function compare(targets, lang, env, fetchImpl) {
+  const started = Date.now();
+  const timings = {};
   const read = pageReader(env, fetchImpl);
-  const settled = await Promise.allSettled(targets.map((t) => gatherCar(t, read)));
+  const settled = await Promise.allSettled(targets.map((t) => readListing(t, read)));
   const bad = settled.findIndex((r) => r.status === "rejected");
   if (bad !== -1) return fail(502, `Couldn't read listing ${bad === 0 ? "A" : "B"}: ${settled[bad].reason.message}.`);
-  let checked;
+  let listings;
   try {
-    checked = cars(settled.map((r) => r.value));
+    listings = settled.map((r, i) => validate.listing(r.value, i === 0 ? "A" : "B"));
   } catch (e) {
-    if (e instanceof InputError) return fail(502, e.message);
+    if (e instanceof validate.InputError) return fail(502, e.message);
     throw e;
   }
-  const [a, b] = await Promise.all(checked.map((c) => analyzeOne(c, lang, env, fetchImpl)));
+  timings.read = Date.now() - started;
+  const [a, b] = await Promise.all(listings.map((l, i) => analyzeOne(l, targets[i], read, lang, env, fetchImpl, timings, i === 0 ? "a" : "b")));
+  const verdictStarted = Date.now();
   let summary = null;
   try {
     summary = await verdict(a, b, lang, env, fetchImpl);
   } catch {
     // The side-by-side facts still stand without the written verdict.
   }
-  return { status: 200, body: { a, b, verdict: summary } };
+  timings.verdict = Date.now() - verdictStarted;
+  timings.total = Date.now() - started;
+  return { status: 200, body: { a, b, verdict: summary, timings_ms: timings } };
 }
 
 async function handle({ method, rawBody, ip = "" }, { env, fetchImpl }) {
