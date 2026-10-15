@@ -40,10 +40,12 @@ function parse(text) {
 
 function clean(v) {
   const e = v && typeof v.engine === "object" && v.engine ? v.engine : {};
+  const code = str(e.code, 40);
   return {
     engine: {
-      code: str(e.code, 40),
-      alternatives: strings(e.alternatives, 4, 40),
+      code,
+      // The model sometimes repeats the main code among the alternatives.
+      alternatives: [...new Set(strings(e.alternatives, 4, 40))].filter((alt) => alt !== code),
       confidence: CONFIDENCES.includes(e.confidence) ? e.confidence : "low",
       reason: str(e.reason, 300),
       how_to_confirm: str(e.how_to_confirm, 300),

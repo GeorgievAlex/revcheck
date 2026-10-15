@@ -45,6 +45,7 @@ const T = {
     under: (d) => `${d} below the expected price`,
     seeComps: (site) => `See similar cars on ${site}`,
     knownTitle: "Known issues for this engine and model",
+    weakSpots: "Common weak spots",
     engine: "Engine",
     orEngine: "or",
     confidence: { high: "certain", medium: "likely", low: "unsure" },
@@ -121,6 +122,7 @@ const T = {
     under: (d) => `${d} под пазарната цена`,
     seeComps: (site) => `Виж подобните в ${site}`,
     knownTitle: "Известни проблеми на двигателя и модела",
+    weakSpots: "Чести слабости",
     engine: "Двигател",
     orEngine: "или",
     confidence: { high: "сигурно", medium: "вероятно", low: "несигурно" },
@@ -255,6 +257,7 @@ function knowledgeBlock(k) {
   out.push(...list(s.conflicts, k.seller_claim_conflicts));
   if (k.known_issues.length) {
     out.push(
+      el("h4", {}, s.weakSpots),
       el("ul", { class: "issues" }, k.known_issues.map((i) =>
         el("li", {}, el("span", { class: `pill ${i.severity === "high" ? "poor" : i.severity === "medium" ? "fair" : ""}` }, s.severity[i.severity]), " ", el("strong", {}, i.part), `: ${i.problem}`, i.check ? el("span", { class: "muted small block" }, `${s.checkIt}: ${i.check}`) : null),
       )),

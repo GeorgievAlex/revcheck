@@ -279,7 +279,7 @@ test("us_import flag comes from the listing text", () => {
 
 test("knowledge output is cleaned: enums, caps, no stray fields", () => {
   const k = K.clean({
-    engine: { code: "N52B30", alternatives: ["N53B30"], confidence: "very", reason: "272 hp" },
+    engine: { code: "N52B30", alternatives: ["N52B30", "N53B30", "N53B30"], confidence: "very", reason: "272 hp" },
     known_issues: [...Array(9)].map((_, i) => ({ part: `p${i}`, problem: "x", severity: "extreme", injected: true })).concat([{ part: "", problem: "no part" }]),
     campaigns: [{ what: "Blower motor wiring", note: "ask a dealer" }, { note: "no what" }],
     seller_claim_conflicts: "not a list",
