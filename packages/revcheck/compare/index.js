@@ -14,7 +14,8 @@
 const validate = require("./validate.js");
 const { siteOf, pageReader, readListing, findComparables } = require("./listing.js");
 const { marketFor } = require("./market.js");
-const { knowledgeFor } = require("./knowledge.js");
+const { knowledgeFor, clean: cleanKnowledge } = require("./knowledge.js");
+const crypto = require("node:crypto");
 
 const INFERENCE_URL = "https://inference.do-ai.run/v1/chat/completions";
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
@@ -171,17 +172,31 @@ function flags(listing, now = Date.now(), vision = null) {
 
 // Photos only need the listing, so they're checked while the market search
 // (up to two rounds of mobile.bg pages) is still running.
-async function analyzeOne(listing, target, read, lang, env, fetchImpl, timings, label) {
+// DigitalOcean's web gateway answers 202 "not ready" after 40 seconds, so a
+// comparison is split into short requests (start, car ×2, verdict) and every
+// slow step gets a deadline: a step that runs over is dropped (null) rather
+// than sinking the whole car.
+const STEP_DEADLINE_MS = 30000;
+
+const withDeadline = (work, ms) =>
+  Promise.race([work, new Promise((resolve) => setTimeout(() => resolve(null), ms))]);
+
+async function analyzeCar(target, lang, env, fetchImpl, label = "") {
+  const started = Date.now();
+  const timings = {};
+  const read = pageReader(env, fetchImpl);
+  const listing = validate.listing(await readListing(target, read), label);
+  timings.read = Date.now() - started;
   const timed = async (name, work) => {
-    const started = Date.now();
+    const begun = Date.now();
     try {
-      return await work();
-    } catch {
-      return null;
+      return await withDeadline(work().catch(() => null), STEP_DEADLINE_MS - (Date.now() - started));
     } finally {
-      timings[`${name}_${label}`] = Date.now() - started;
+      timings[name] = Date.now() - begun;
     }
   };
+  // Photos only need the listing, so they're checked while the market search
+  // (up to two rounds of search pages) and the known-issues lookup run.
   const [vision, market, knowledge] = await Promise.all([
     timed("photos", () => inspectPhotos(listing, lang, env, fetchImpl)),
     timed("market", async () => {
@@ -193,21 +208,48 @@ async function analyzeOne(listing, target, read, lang, env, fetchImpl, timings, 
     }),
     timed("knowledge", () => knowledgeFor(listing, lang, env, fetchImpl)),
   ]);
-  return { listing, vision, market, knowledge, flags: flags(listing, Date.now(), vision) };
+  timings.total = Date.now() - started;
+  return { listing, vision, market, knowledge, flags: flags(listing, Date.now(), vision), timings_ms: timings };
+}
+
+// The verdict step gets each car's results back from the browser, so they
+// are untrusted: every part is rebuilt from known fields with size caps.
+const FLAG_CODES = ["vin_present", "vin_missing", "km_low", "km_high", "few_photos", "us_import", "odometer_check"];
+const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+
+function brief(x, label) {
+  const v = x && x.vision && typeof x.vision === "object" ? x.vision : null;
+  const m = x && x.market && typeof x.market === "object" ? x.market : null;
+  const k = x && x.knowledge && typeof x.knowledge === "object" ? cleanKnowledge(x.knowledge) : null;
+  const listing = validate.listing(x && x.listing, label);
+  return {
+    listing: { ...listing, photos: listing.photos.length, description: listing.description.slice(0, 800) },
+    photos_seen: v && {
+      photos_checked: num(v.photos_checked),
+      condition: typeof v.condition === "string" ? v.condition.slice(0, 20) : null,
+      damage: strings(v.damage, 12),
+      equipment_seen: strings(v.equipment_seen, 16),
+      claimed_not_visible: strings(v.claimed_not_visible, 10),
+      concerns: strings(v.concerns, 10),
+    },
+    // Model knowledge, not a VIN decode: treat the engine as likely, not certain.
+    model_knowledge: k && { engine: k.engine, known_issues: k.known_issues.map((i) => `${i.part}: ${i.problem}`), seller_claim_conflicts: k.seller_claim_conflicts },
+    market: m && {
+      comparables: num(m.comparables),
+      percentile: num(m.percentile),
+      median_eur: num(m.median_eur),
+      min_eur: num(m.min_eur),
+      max_eur: num(m.max_eur),
+      fair: m.fair && typeof m.fair === "object" ? { low: num(m.fair.low), mid: num(m.fair.mid), high: num(m.fair.high), delta_eur: num(m.fair.delta_eur) } : null,
+    },
+    flags: (Array.isArray(x && x.flags) ? x.flags : []).filter((f) => f && FLAG_CODES.includes(f.code)).map((f) => ({ code: f.code, per_year: num(f.per_year), seen_km: num(f.seen_km), listed_km: num(f.listed_km) })).slice(0, 8),
+  };
 }
 
 async function verdict(a, b, lang, env, fetchImpl) {
-  const brief = (x) => ({
-    listing: { ...x.listing, photos: x.listing.photos.length, description: x.listing.description.slice(0, 800) },
-    photos_seen: x.vision,
-    // Model knowledge, not a VIN decode: treat the engine as likely, not certain.
-    model_knowledge: x.knowledge && { engine: x.knowledge.engine, known_issues: x.knowledge.known_issues.map((i) => `${i.part}: ${i.problem}`), seller_claim_conflicts: x.knowledge.seller_claim_conflicts },
-    market: x.market && { ...x.market, search_url: undefined, other_search_url: undefined },
-    flags: x.flags,
-  });
   const v = await chat(env, fetchImpl, [
     { role: "system", content: VERDICT_PROMPT },
-    { role: "user", content: `Write in ${LANGS[lang]}.\n\nA:\n${JSON.stringify(brief(a))}\n\nB:\n${JSON.stringify(brief(b))}` },
+    { role: "user", content: `Write in ${LANGS[lang]}.\n\nA:\n${JSON.stringify(brief(a, "A"))}\n\nB:\n${JSON.stringify(brief(b, "B"))}` },
   ], 900);
   return {
     winner: ["a", "b", "even"].includes(v.winner) ? v.winner : "even",
@@ -237,60 +279,109 @@ async function verifyTurnstile(token, ip, env, fetchImpl) {
   return null;
 }
 
-// Everything after the request checks. Exported so scripts/try-compare.mjs
-// can run it locally without a Turnstile token. Parsed pages still pass
-// through validate.js: the HTML is third-party, and Gemma fetches the photo
-// URLs, so only the sites' image CDNs get through.
+// The whole comparison in one go, for scripts/try-compare.mjs (no gateway
+// limit locally, no Turnstile). The web handler runs the same steps as
+// separate requests.
 async function compare(targets, lang, env, fetchImpl) {
   const started = Date.now();
-  const timings = {};
-  const read = pageReader(env, fetchImpl);
-  const settled = await Promise.allSettled(targets.map((t) => readListing(t, read)));
+  const settled = await Promise.allSettled(targets.map((t, i) => analyzeCar(t, lang, env, fetchImpl, i === 0 ? "A" : "B")));
   const bad = settled.findIndex((r) => r.status === "rejected");
   if (bad !== -1) return fail(502, `Couldn't read listing ${bad === 0 ? "A" : "B"}: ${settled[bad].reason.message}.`);
-  let listings;
-  try {
-    listings = settled.map((r, i) => validate.listing(r.value, i === 0 ? "A" : "B"));
-  } catch (e) {
-    if (e instanceof validate.InputError) return fail(502, e.message);
-    throw e;
-  }
-  timings.read = Date.now() - started;
-  const [a, b] = await Promise.all(listings.map((l, i) => analyzeOne(l, targets[i], read, lang, env, fetchImpl, timings, i === 0 ? "a" : "b")));
-  const verdictStarted = Date.now();
-  let summary = null;
-  try {
-    summary = await verdict(a, b, lang, env, fetchImpl);
-  } catch {
-    // The side-by-side facts still stand without the written verdict.
-  }
-  timings.verdict = Date.now() - verdictStarted;
-  timings.total = Date.now() - started;
-  return { status: 200, body: { a, b, verdict: summary, timings_ms: timings } };
+  const [a, b] = settled.map((r) => r.value);
+  const summary = await verdict(a, b, lang, env, fetchImpl).catch(() => null);
+  return { status: 200, body: { a, b, verdict: summary, timings_ms: { a: a.timings_ms, b: b.timings_ms, total: Date.now() - started } } };
 }
 
-async function handle({ method, rawBody, ip = "" }, { env, fetchImpl }) {
-  if (method !== "POST") return fail(405, "POST a JSON body with two listing URLs.");
+// A ticket ties the follow-up requests to one bot-checked comparison: the
+// two listing URLs and an expiry, signed with a key derived from the
+// Turnstile secret. Stateless, so it can be reused until it expires; that
+// window is short and the prepaid inference balance caps the cost.
+const TICKET_TTL_MS = 3 * 60 * 1000;
+const ticketKey = (env) => crypto.createHash("sha256").update(`revcheck-ticket:${env.TURNSTILE_SECRET}`).digest();
+
+function issueTicket(urls, env, now) {
+  const payload = Buffer.from(JSON.stringify({ u: urls, e: now + TICKET_TTL_MS })).toString("base64url");
+  return `${payload}.${crypto.createHmac("sha256", ticketKey(env)).update(payload).digest("base64url")}`;
+}
+
+function readTicket(ticket, env, now) {
+  if (typeof ticket !== "string" || ticket.length > 2048) return null;
+  const [payload, sig] = ticket.split(".");
+  if (!payload || !sig) return null;
+  const expected = crypto.createHmac("sha256", ticketKey(env)).update(payload).digest();
+  const given = Buffer.from(sig, "base64url");
+  if (given.length !== expected.length || !crypto.timingSafeEqual(given, expected)) return null;
+  try {
+    const t = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return Array.isArray(t.u) && t.e > now ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+function targetsFrom(urls) {
+  if (!Array.isArray(urls) || urls.length !== 2) return { error: fail(400, "Send exactly two listing URLs.") };
+  const targets = urls.map((u) => (typeof u === "string" && u.length <= 300 ? siteOf(u) : null));
+  const bad = targets.findIndex((t) => !t);
+  if (bad !== -1) return { error: fail(400, `Listing ${bad === 0 ? "A" : "B"} must be a mobile.bg or cars.bg listing link.`) };
+  if (targets[0].url === targets[1].url) return { error: fail(400, "Those are the same listing. Paste two different cars.") };
+  return { targets };
+}
+
+// Steps:
+//   {step: "start", urls: [a, b], turnstile}     -> {ticket}
+//   {step: "car", ticket, index: 0|1, lang}      -> one car's report
+//   {step: "verdict", ticket, a, b, lang}        -> the written verdict
+async function handle({ method, rawBody, ip = "" }, { env, fetchImpl, now = Date.now() }) {
+  if (method !== "POST") return fail(405, "POST a JSON body.");
   if (!env.DO_INFERENCE_KEY) return fail(500, "The function is missing its DO_INFERENCE_KEY.");
   if (!env.TURNSTILE_SECRET) return fail(500, "The function is missing its TURNSTILE_SECRET.");
+  if (rawBody.length > 300000) return fail(413, "Request is too large.");
   let input;
   try {
     input = JSON.parse(rawBody);
   } catch {
     return fail(400, "Body must be valid JSON.");
   }
-  const urls = Array.isArray(input && input.urls) ? input.urls : [];
-  if (urls.length !== 2) return fail(400, "Send exactly two listing URLs.");
-  const targets = urls.map((u) => (typeof u === "string" && u.length <= 300 ? siteOf(u) : null));
-  const bad = targets.findIndex((t) => !t);
-  if (bad !== -1) return fail(400, `Listing ${bad === 0 ? "A" : "B"} must be a mobile.bg or cars.bg listing link.`);
-  if (targets[0].url === targets[1].url) return fail(400, "Those are the same listing. Paste two different cars.");
   const lang = input.lang === "bg" ? "bg" : "en";
-  const token = typeof input.turnstile === "string" ? input.turnstile : "";
-  if (!token || token.length > 2048) return fail(403, "Tick the \"I'm human\" box first.");
-  const rejected = await verifyTurnstile(token, ip, env, fetchImpl);
-  if (rejected) return rejected;
-  return compare(targets, lang, env, fetchImpl);
+
+  if (input.step === "start") {
+    const { targets, error } = targetsFrom(input.urls);
+    if (error) return error;
+    const token = typeof input.turnstile === "string" ? input.turnstile : "";
+    if (!token || token.length > 2048) return fail(403, "Tick the \"I'm human\" box first.");
+    const rejected = await verifyTurnstile(token, ip, env, fetchImpl);
+    if (rejected) return rejected;
+    return { status: 200, body: { ticket: issueTicket(targets.map((t) => t.url), env, now) } };
+  }
+
+  const ticket = readTicket(input.ticket, env, now);
+  if (!ticket) return fail(403, "This comparison expired. Click Compare again.");
+  const { targets, error } = targetsFrom(ticket.u);
+  if (error) return error;
+
+  if (input.step === "car") {
+    const index = input.index === 1 ? 1 : 0;
+    const label = index === 0 ? "A" : "B";
+    try {
+      return { status: 200, body: await analyzeCar(targets[index], lang, env, fetchImpl, label) };
+    } catch (e) {
+      return fail(502, `Couldn't read listing ${label}: ${e.message}.`);
+    }
+  }
+
+  if (input.step === "verdict") {
+    try {
+      // The cars must be the ones this ticket was issued for.
+      if (!input.a || !input.b || input.a.listing?.url !== targets[0].url || input.b.listing?.url !== targets[1].url) return fail(400, "Those results don't belong to this comparison.");
+      return { status: 200, body: { verdict: await verdict(input.a, input.b, lang, env, fetchImpl) } };
+    } catch (e) {
+      if (e instanceof validate.InputError) return fail(400, e.message);
+      return fail(502, "Couldn't write the verdict this time. The facts above are complete.");
+    }
+  }
+
+  return fail(400, 'Unknown step. Use "start", "car" or "verdict".');
 }
 
 function decodeBody(args) {
@@ -323,4 +414,4 @@ async function main(args) {
   return { statusCode: status, headers, body: JSON.stringify(body) };
 }
 
-module.exports = { main, handle, compare, flags, parseModelJson };
+module.exports = { main, handle, compare, analyzeCar, flags, parseModelJson, issueTicket, readTicket, brief };

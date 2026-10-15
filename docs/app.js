@@ -13,7 +13,10 @@ const T = {
     labelB: "Listing B",
     go: "Compare",
     footer: "The two links are sent to a DigitalOcean Function. It reads the public listings through a small Cloudflare Worker, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.",
-    working: "Reading both listings, looking at every photo and checking the market. This takes about 20–40 seconds…",
+    working: "Reading both listings, looking at every photo and checking the market. This takes about 30–40 seconds…",
+    writing: "Both cars are checked. Writing the verdict…",
+    carLoading: "Checking this car…",
+    carFailed: (e) => `This car couldn't be checked: ${e}`,
     notConnected: "The comparer isn't connected yet (no function URL configured).",
     noBotCheck: "The bot check isn't configured yet.",
     botFailed: "The bot check couldn't load. Refresh the page to try again.",
@@ -86,7 +89,10 @@ const T = {
     labelB: "Обява Б",
     go: "Сравни",
     footer: "RevCheck чете само публичната информация от обявите. Снимките се анализират от Gemma 4 (отворен AI модел), а цената от TabPFN. Нищо не се записва. Отчетът е второ мнение и не замества огледа и проверката в сервиз.",
-    working: "Чета обявите, разглеждам снимките и проверявам цените. Отнема около 20–40 секунди…",
+    working: "Чета обявите, разглеждам снимките и проверявам цените. Отнема около 30–40 секунди…",
+    writing: "Двете коли са проверени. Пиша препоръката…",
+    carLoading: "Проверявам колата…",
+    carFailed: (e) => `Не успяхме да проверим тази кола: ${e}`,
     notConnected: "Услугата още не е свързана.",
     noBotCheck: "Защитата срещу ботове още не е настроена.",
     botFailed: "Защитата срещу ботове не се зареди. Презаредете страницата.",
@@ -318,24 +324,36 @@ function carCard(x, label, watch, isWinner) {
   ];
 }
 
+// Cards render as each car arrives; the verdict comes last. A part that
+// hasn't arrived yet shows a placeholder, one that failed shows why.
 function render(data) {
   const s = t();
   const v = data.verdict;
   const winner = v && v.winner;
-  $("verdict").replaceChildren(
-    ...(data.lang && data.lang !== lang ? [el("p", { class: "muted small" }, s.otherLang)] : []),
-    ...(v
-      ? [
-          el("p", { class: "car-label" }, winner === "even" ? s.even : `${s.better}: ${winner === "a" ? s.labelA : s.labelB}`),
-          el("h2", {}, v.headline),
-          ...list(s.why, v.why),
-          ...list(s.ask, v.ask_seller),
-        ]
-      : [el("p", { class: "muted" }, s.noVerdict)]),
-  );
-  $("car-a").replaceChildren(...carCard(data.a, s.labelA, v && v.watch_out_a, winner === "a"));
-  $("car-b").replaceChildren(...carCard(data.b, s.labelB, v && v.watch_out_b, winner === "b"));
+  const verdictBody = v
+    ? [
+        el("p", { class: "car-label" }, winner === "even" ? s.even : `${s.better}: ${winner === "a" ? s.labelA : s.labelB}`),
+        el("h2", {}, v.headline),
+        ...list(s.why, v.why),
+        ...list(s.ask, v.ask_seller),
+      ]
+    : [el("p", { class: "muted" }, data.verdictDone ? s.noVerdict : data.a && data.b ? s.writing : s.working)];
+  $("verdict").replaceChildren(...(data.lang && data.lang !== lang ? [el("p", { class: "muted small" }, s.otherLang)] : []), ...verdictBody);
+  const card = (x, label, watch, win) =>
+    x && x.error ? [el("p", { class: "car-label" }, label), el("p", { class: "bad" }, s.carFailed(x.error))]
+    : x ? carCard(x, label, watch, win)
+    : [el("p", { class: "car-label" }, label), el("p", { class: "muted" }, s.carLoading)];
+  $("car-a").replaceChildren(...card(data.a, s.labelA, v && v.watch_out_a, winner === "a"));
+  $("car-b").replaceChildren(...card(data.b, s.labelB, v && v.watch_out_b, winner === "b"));
   $("result").hidden = false;
+}
+
+// text/plain keeps every call a CORS simple request (no preflight).
+async function call(body) {
+  const res = await fetch(FUNCTION_URL, { method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Error ${res.status}`);
+  return data;
 }
 
 // Cloudflare Turnstile: the function only does work for a request carrying a
@@ -385,21 +403,32 @@ $("compare-form").addEventListener("submit", async (event) => {
   $("go").disabled = true;
   setStatus(s.working);
   const requestLang = lang;
+  const urls = [$("url-a").value.trim(), $("url-b").value.trim()];
+  // DigitalOcean's gateway cuts requests at 40 s, so the comparison runs as
+  // short steps: a bot-checked start, one request per car, then the verdict.
   try {
-    // text/plain keeps this a CORS simple request (no preflight).
-    const res = await fetch(FUNCTION_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ urls: [$("url-a").value.trim(), $("url-b").value.trim()], lang, turnstile: turnstileToken }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return setStatus(data.error || `Error ${res.status}`, true);
-    setStatus("");
-    lastResult = { ...data, lang: requestLang };
-    render(data);
+    const { ticket } = await call({ step: "start", urls, turnstile: turnstileToken, lang: requestLang });
+    lastResult = { lang: requestLang };
+    render(lastResult);
     $("result").scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch {
-    setStatus(s.network, true);
+    await Promise.all(
+      ["a", "b"].map((key, index) =>
+        call({ step: "car", ticket, index, lang: requestLang }).then(
+          (car) => (lastResult[key] = car),
+          (e) => (lastResult[key] = { error: e.message }),
+        ).then(() => render(lastResult)),
+      ),
+    );
+    if (!lastResult.a.error && !lastResult.b.error) {
+      setStatus(s.writing);
+      const done = await call({ step: "verdict", ticket, a: lastResult.a, b: lastResult.b, lang: requestLang }).catch(() => ({}));
+      lastResult.verdict = done.verdict || null;
+    }
+    lastResult.verdictDone = true;
+    setStatus("");
+    render(lastResult);
+  } catch (e) {
+    setStatus(e instanceof TypeError ? s.network : e.message, true);
   } finally {
     resetTurnstile();
   }
