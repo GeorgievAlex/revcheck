@@ -1,0 +1,24 @@
+# DigitalOcean Functions project. Deploy from the repo root:
+#   doctl serverless deploy .
+# Secrets come from ./.env (git-ignored), never from this file.
+environment: {}
+packages:
+  - name: koyakola
+    functions:
+      - name: compare
+        runtime: nodejs:18
+        web: raw
+        # Without this DO's gateway adds its own "Access-Control-Allow-Origin: *"
+        # on top of the function's, and browsers reject the doubled header.
+        annotations:
+          web-custom-options: true
+        environment:
+          DO_INFERENCE_KEY: ${DO_INFERENCE_KEY}
+          TABPFN_KEY: ${TABPFN_KEY}
+          MODEL: gemma-4-31B-it
+          ALLOWED_ORIGIN: https://georgievalex.github.io
+          TURNSTILE_SECRET: ${TURNSTILE_SECRET}
+          TURNSTILE_HOSTNAME: georgievalex.github.io
+        limits:
+          timeout: 120000
+          memory: 256

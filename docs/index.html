@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KoyaKola: which car is the better buy?</title>
+  <meta name="description" content="Paste two used-car listings from mobile.bg or cars.bg. Open-weight AI checks the photos, the price against the market and the red flags, then tells you which one to go see.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script>try { if (localStorage.getItem("koyakola-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script></head>
+<body>
+  <header class="site">
+    <a class="brand" href="./" aria-label="KoyaKola home"><img class="logo" src="favicon.svg" alt=""><span class="wordmark">Koya<span>Kola</span></span></a>
+    <nav>
+      <button id="lang-toggle" class="theme-toggle" type="button">БГ</button>
+      <button id="theme-toggle" class="theme-toggle" type="button">☀ Light</button>
+    </nav>
+  </header>
+  <main class="wide">
+    <section class="intro">
+      <h1 data-i18n="h1">Two listings. Which one is the better buy?</h1>
+      <p data-i18n="lede">Paste two used-car listings from mobile.bg or cars.bg. Gemma 4, an open-weight model, looks at the photos for damage and equipment. The price is checked against similar cars for sale, with a fair-price range from TabPFN. Then you get a verdict and what to ask the seller.</p>
+    </section>
+
+    <form id="compare-form" class="panel">
+      <div class="grid2">
+        <div><label for="url-a" data-i18n="labelA">Listing A</label><input id="url-a" type="url" required maxlength="300" placeholder="https://www.mobile.bg/obiava-…"></div>
+        <div><label for="url-b" data-i18n="labelB">Listing B</label><input id="url-b" type="url" required maxlength="300" placeholder="https://www.cars.bg/offer/…"></div>
+      </div>
+      <div id="turnstile" class="turnstile"></div>
+      <p><button class="button" id="go" type="submit" disabled data-i18n="go">Compare</button></p>
+      <p id="status" class="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section id="result" hidden>
+      <article id="verdict" class="panel verdict"></article>
+      <div class="cars">
+        <article id="car-a" class="panel car"></article>
+        <article id="car-b" class="panel car"></article>
+      </div>
+    </section>
+  </main>
+  <footer class="site">
+    <p data-i18n="footer">The two links are sent to a DigitalOcean Function. It reads the public listings, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
+    <p><a href="https://github.com/GeorgievAlex/koyakola">Source</a></p>
+  </footer>
+  <script type="module" src="theme.js"></script>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

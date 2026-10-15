@@ -1,0 +1,10 @@
+.env
+node_modules/
+.deployed/
+__deployer__.zip
+packages/koyakola/compare/package-lock.json
+.superpowers/
+.claude-flow/
+.swarm/
+.playwright-mcp/
+ruvector.db

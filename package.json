@@ -1,0 +1,13 @@
+{
+  "name": "koyakola",
+  "private": true,
+  "description": "Compare two used-car listings from mobile.bg or cars.bg with open-weight AI",
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "try": "node scripts/try-compare.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
