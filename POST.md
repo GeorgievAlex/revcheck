@@ -1,6 +1,6 @@
 ---
 title: "RevCheck: paste two used-car listings, get a second opinion before you drive across town"
-cover_image: https://georgievalex.github.io/revcheck/media/verdict.jpg
+cover_image: https://georgievalex.github.io/revcheck/media/cover.jpg
 published: false
 tags: devchallenge, hf26challenge, ai, opensource
 ai_disclosure_level: ai_assisted
