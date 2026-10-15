@@ -151,7 +151,8 @@ main.wide, header.site, footer.site { max-width: 1040px; }
 .meter span { position: absolute; top: -4px; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: var(--text); }
 :root[data-theme="light"] .good, :root[data-theme="light"] .pill.good { color: #1a7f37; }
 :root[data-theme="light"] .bad, :root[data-theme="light"] ul.bad li, :root[data-theme="light"] .pill.poor { color: #c62828; }
-.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
-.lang-switch button { background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 0.85rem; font-weight: 600; padding: 4px 12px; cursor: pointer; }
-.lang-switch button[aria-pressed="true"] { background: var(--accent); color: #141414; }
-.lang-switch button:hover:not([aria-pressed="true"]) { color: var(--text); }
+.lang-switch { display: inline-flex; gap: 6px; }
+.lang-switch button { background: transparent; border: 2px solid transparent; border-radius: 6px; padding: 2px; cursor: pointer; line-height: 0; opacity: 0.45; transition: opacity 0.15s; }
+.lang-switch button:hover { opacity: 0.85; }
+.lang-switch button[aria-pressed="true"] { opacity: 1; border-color: var(--accent); }
+.flag { width: 28px; height: 18px; display: block; border-radius: 2px; box-shadow: 0 0 0 1px var(--line); }
