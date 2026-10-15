@@ -1,4 +1,8 @@
 import { FUNCTION_URL, TURNSTILE_SITEKEY } from "./config.js";
+import { readerReady, readPage } from "./reader.js";
+import { siteOf, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards } from "./lib/listing.js";
+
+const SEARCH_PAGES = 3;
 
 const $ = (id) => document.getElementById(id);
 const LANG_KEY = "revcheck-lang";
@@ -10,8 +14,22 @@ const T = {
     labelA: "Listing A",
     labelB: "Listing B",
     go: "Compare",
-    footer: "The two links are sent to a DigitalOcean Function. It reads the public listings, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.",
-    working: "Reading both listings, looking at the photos and checking the market. This takes about 20–40 seconds…",
+    footer: "Your browser reads the two listings and similar cars, then sends that data to a DigitalOcean Function, which passes the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.",
+    readerOk: "✓ RevCheck Reader is installed.",
+    installTitle: "Install the RevCheck Reader extension (Chrome, Edge, Brave)",
+    installWhy: "mobile.bg and cars.bg block requests from cloud servers, so RevCheck reads the listings from your own browser. The extension only fetches mobile.bg and cars.bg listing and search pages when you click Compare, without your cookies. It's about 60 lines of code.",
+    step1: "Download revcheck-reader.zip",
+    step1b: "and unzip it.",
+    step2: "Open chrome://extensions and turn on Developer mode (top right).",
+    step3: "Click \"Load unpacked\" and pick the unzipped folder.",
+    step4: "Reload this page.",
+    readCode: "Read the extension's code",
+    reading: "Reading both listings and similar cars from your browser…",
+    working: "Looking at the photos and checking the market. This takes about 20–40 seconds…",
+    noReader: "Install the RevCheck Reader extension first (see below). mobile.bg and cars.bg block cloud servers, so the listings are read from your browser.",
+    badLink: (l) => `${l} must be a mobile.bg or cars.bg listing link.`,
+    sameLink: "Those are the same listing. Paste two different cars.",
+    cantRead: (l, e) => `Couldn't read ${l} (${e}). Check the link opens in your browser.`,
     notConnected: "The comparer isn't connected yet (no function URL configured).",
     noBotCheck: "The bot check isn't configured yet.",
     botFailed: "The bot check couldn't load. Refresh the page to try again.",
@@ -65,8 +83,22 @@ const T = {
     labelA: "Обява A",
     labelB: "Обява Б",
     go: "Сравни",
-    footer: "Двата линка се изпращат към DigitalOcean Function. Тя чете публичните обяви, праща снимките към Gemma 4 в DigitalOcean Serverless Inference и ценовите данни към TabPFN. Нищо не се пази. Приемайте резултата като второ мнение, не като оглед.",
-    working: "Чета двете обяви, гледам снимките и проверявам пазара. Отнема около 20–40 секунди…",
+    footer: "Браузърът ви чете двете обяви и подобни коли, след това праща данните към DigitalOcean Function, която подава снимките на Gemma 4 в DigitalOcean Serverless Inference и ценовите данни на TabPFN. Нищо не се пази. Приемайте резултата като второ мнение, не като оглед.",
+    readerOk: "✓ RevCheck Reader е инсталирано.",
+    installTitle: "Инсталирайте разширението RevCheck Reader (Chrome, Edge, Brave)",
+    installWhy: "mobile.bg и cars.bg блокират заявки от облачни сървъри, затова RevCheck чете обявите от вашия браузър. Разширението чете само обяви и търсения в mobile.bg и cars.bg, когато натиснете Сравни, без вашите бисквитки. Около 60 реда код.",
+    step1: "Изтеглете revcheck-reader.zip",
+    step1b: "и го разархивирайте.",
+    step2: "Отворете chrome://extensions и включете Developer mode (горе вдясно).",
+    step3: "Натиснете \"Load unpacked\" и изберете разархивираната папка.",
+    step4: "Презаредете тази страница.",
+    readCode: "Вижте кода на разширението",
+    reading: "Чета двете обяви и подобни коли от вашия браузър…",
+    working: "Гледам снимките и проверявам пазара. Отнема около 20–40 секунди…",
+    noReader: "Първо инсталирайте разширението RevCheck Reader (вижте по-долу). mobile.bg и cars.bg блокират облачни сървъри, затова обявите се четат от вашия браузър.",
+    badLink: (l) => `${l} трябва да е линк към обява в mobile.bg или cars.bg.`,
+    sameLink: "Това е една и съща обява. Поставете две различни коли.",
+    cantRead: (l, e) => `Не успях да прочета ${l} (${e}). Проверете дали линкът се отваря.`,
     notConnected: "Сравнението още не е свързано (няма адрес на функцията).",
     noBotCheck: "Проверката за бот още не е настроена.",
     botFailed: "Проверката за бот не се зареди. Презаредете страницата.",
@@ -291,14 +323,29 @@ $("compare-form").addEventListener("submit", async (event) => {
   const s = t();
   if (!FUNCTION_URL) return setStatus(s.notConnected, true);
   if (!turnstileToken) return setStatus(s.tickBox, true);
+  const targets = [$("url-a").value, $("url-b").value].map(siteOf);
+  for (const [i, target] of targets.entries()) if (!target) return setStatus(s.badLink(i ? s.labelB : s.labelA), true);
+  if (targets[0].url === targets[1].url) return setStatus(s.sameLink, true);
+  if (!(await readerReady())) {
+    $("install").open = true;
+    return setStatus(s.noReader, true);
+  }
   $("go").disabled = true;
+  setStatus(s.reading);
+  let gathered;
+  try {
+    gathered = await Promise.all(targets.map((target, i) => gatherCar(target).catch((e) => Promise.reject(new Error(s.cantRead(i ? s.labelB : s.labelA, e.message))))));
+  } catch (e) {
+    $("go").disabled = !turnstileToken;
+    return setStatus(e.message, true);
+  }
   setStatus(s.working);
   try {
     // text/plain keeps this a CORS simple request (no preflight).
     const res = await fetch(FUNCTION_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain" },
-      body: JSON.stringify({ urls: [$("url-a").value.trim(), $("url-b").value.trim()], lang, turnstile: turnstileToken }),
+      body: JSON.stringify({ cars: gathered, lang, turnstile: turnstileToken }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return setStatus(data.error || `Error ${res.status}`, true);
@@ -313,6 +360,24 @@ $("compare-form").addEventListener("submit", async (event) => {
   }
 });
 
+// One car: its listing, plus up to 3 pages of similar mobile.bg listings
+// (same make/model, year ±1). Comparables come from mobile.bg for cars.bg
+// listings too: cars.bg search needs ids its listing pages don't expose.
+async function gatherCar(target) {
+  const html = await readPage(target.url);
+  const listing = target.site === "mobile" ? parseMobile(html, target.url) : parseCars(html, target.url);
+  if (!listing.title || !listing.price_eur) throw new Error("no price or title on the page");
+  const path = searchPath(listing);
+  if (!path || !listing.year) return { listing, comparables: [], search_url: null };
+  const pages = await Promise.all(
+    Array.from({ length: SEARCH_PAGES }, (_, i) => readPage(searchUrl(path, listing.year, i + 1)).catch(() => "")),
+  );
+  const ownId = (target.url.match(/obiava-(\d+)/) || [])[1];
+  const seen = new Set();
+  const comparables = pages.flatMap(parseSearchCards).filter((r) => r.id !== ownId && !seen.has(r.id) && seen.add(r.id));
+  return { listing, comparables, search_url: searchUrl(path, listing.year, 1) };
+}
+
 // ?a=…&b=… pre-fills the form, so a comparison link can be shared.
 const params = new URLSearchParams(location.search);
 if (params.get("a")) $("url-a").value = params.get("a");
@@ -320,3 +385,7 @@ if (params.get("b")) $("url-b").value = params.get("b");
 
 applyLang();
 loadTurnstile();
+readerReady().then((ok) => {
+  $("install").open = !ok;
+  $("reader-ok").hidden = !ok;
+});

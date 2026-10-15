@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "try": "node scripts/try-compare.mjs"
+    "try": "node scripts/try-compare.mjs",
+    "pack": "cd extension && rm -f ../docs/revcheck-reader.zip && zip -qr ../docs/revcheck-reader.zip . -x '.*'"
   },
   "engines": {
     "node": ">=18"

@@ -1,10 +1,8 @@
-"use strict";
-// Fetches and parses one used-car listing from mobile.bg or cars.bg. Both
-// sites render listings server-side and allow crawling in robots.txt. Only
-// these two hosts are ever fetched: the URL comes from the visitor, so this
-// allowlist is what keeps the function from being an open proxy.
+// Parses mobile.bg and cars.bg pages into plain listing data. Runs in the
+// visitor's browser: both sites refuse requests from cloud servers, so the
+// RevCheck Reader extension fetches the pages and this module reads them.
+// siteOf() is the allowlist; the extension enforces its own copy.
 
-const USER_AGENT = "RevCheck/0.1 (+https://github.com/GeorgievAlex/revcheck)";
 const BGN_PER_EUR = 1.95583;
 const MAX_PHOTOS = 6;
 const MULTI_WORD_MAKES = ["alfa romeo", "aston martin", "land rover", "mercedes-benz", "rolls-royce"];
@@ -25,17 +23,6 @@ function siteOf(input) {
     return { site: "cars", url: `https://www.cars.bg${url.pathname}` };
   }
   return null;
-}
-
-// mobile.bg still serves windows-1251; cars.bg is UTF-8.
-async function fetchText(url, fetchImpl) {
-  const res = await fetchImpl(url, { headers: { "User-Agent": USER_AGENT, Accept: "text/html" }, redirect: "follow" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const bytes = new Uint8Array(await res.arrayBuffer());
-  const type = res.headers.get("content-type") || "";
-  const head = new TextDecoder("latin1").decode(bytes.subarray(0, 2048));
-  const charset = (type.match(/charset=([\w-]+)/i) || head.match(/charset=["']?([\w-]+)/i) || [])[1] || "utf-8";
-  return new TextDecoder(/1251/.test(charset) ? "windows-1251" : "utf-8").decode(bytes);
 }
 
 const ENTITIES = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
@@ -181,13 +168,48 @@ function parseCars(html, url) {
   };
 }
 
-async function loadListing(input, fetchImpl) {
-  const target = siteOf(input);
-  if (!target) throw new Error("not a mobile.bg or cars.bg listing");
-  const html = await fetchText(target.url, fetchImpl);
-  const listing = target.site === "mobile" ? parseMobile(html, target.url) : parseCars(html, target.url);
-  if (!listing.title || !listing.price_eur) throw new Error("couldn't read the listing (it may have been removed)");
-  return listing;
+const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function searchPath(listing) {
+  if (listing.search_path) return listing.search_path;
+  const make = slug(listing.make);
+  const model = slug(listing.model);
+  return make && model ? `${make}/${model}` : null;
 }
 
-module.exports = { siteOf, fetchText, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, loadListing, USER_AGENT, BGN_PER_EUR };
+const searchUrl = (path, year, page) =>
+  `https://www.mobile.bg/obiavi/avtomobili-dzhipove/${path}/ot-${year - 1}/do-${year + 1}${page > 1 ? `/p-${page}` : ""}`;
+
+const MONTHS = /(януари|февруари|март|април|май|юни|юли|август|септември|октомври|ноември|декември)\s+((?:19|20)\d{2})/;
+
+function parseSearchCards(html) {
+  const cards = html.split(/<div class="item /).slice(1);
+  const rows = [];
+  for (const card of cards) {
+    const id = (card.match(/obiava-(\d+)/) || [])[1];
+    const price = parsePrice(text((card.match(/<div class="price[^"]*">\s*<div>([^<]+)<\/div>/) || [])[1]));
+    const spans = [...((card.match(/<div class="params">([\s\S]*?)<\/div>/) || [])[1] || "").matchAll(/<span>([^<]*)<\/span>/g)].map((m) => text(m[1]));
+    const find = (re) => spans.find((s) => re.test(s));
+    const num = (re) => {
+      const s = find(re);
+      return s ? Number(s.replace(/[^\d]/g, "")) || null : null;
+    };
+    const year = Number((find(MONTHS) || "").match(MONTHS)?.[2]) || null;
+    if (!id || !price || !year) continue;
+    const fuel = find(/Дизел|Бензин|Хибрид|Електр|Газ/);
+    rows.push({
+      id,
+      title: text((card.match(/class="title[^"]*">([^<]+)</) || [])[1]),
+      price_eur: price,
+      year,
+      km: num(/км$/),
+      power_hp: num(/к\.с\.$/),
+      engine_cc: num(/куб\.см$/),
+      fuel: fuel ? (/Дизел/.test(fuel) ? "diesel" : /Хибрид/.test(fuel) ? "hybrid" : /Електр/.test(fuel) ? "electric" : "petrol") : null,
+      gearbox: find(/Автоматична/) ? "automatic" : find(/Ръчна/) ? "manual" : null,
+    });
+  }
+  return rows;
+}
+
+export { siteOf, text, parsePrice, splitMakeModel, findVin, parseMobile, parseCars, searchPath, searchUrl, parseSearchCards, BGN_PER_EUR };

@@ -2,10 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
+import * as L from "../docs/lib/listing.js";
+
 const require = createRequire(import.meta.url);
-const L = require("../packages/revcheck/compare/listing.js");
 const M = require("../packages/revcheck/compare/market.js");
 const F = require("../packages/revcheck/compare/index.js");
+const V = require("../packages/revcheck/compare/validate.js");
 
 test("siteOf only accepts mobile.bg and cars.bg listing pages", () => {
   assert.deepEqual(L.siteOf("https://www.mobile.bg/obiava-117-bmw-320?x=1"), { site: "mobile", url: "https://www.mobile.bg/obiava-117-bmw-320" });
@@ -89,14 +91,14 @@ test("parseSearchCards turns mobile.bg result cards into rows", () => {
   const card = (id, price, year, km) => `<div class="item TOP"><a href="//www.mobile.bg/obiava-${id}-bmw-320" class="title saveSlink">BMW 320</a>
     <div class="price "><div>${price}</div></div>
     <div class="params"><span>юли ${year} г.</span> <span> ${km} км</span> <span>Дизелов</span> <span>184 к.с.</span> <span>Автоматична</span></div></div>`;
-  const rows = M.parseSearchCards(`x${card("1", "3 200 €", 2013, "251 000")}${card("2", "По договаряне", 2013, "1")}`);
+  const rows = L.parseSearchCards(`x${card("1", "3 200 €", 2013, "251 000")}${card("2", "По договаряне", 2013, "1")}`);
   assert.deepEqual(rows, [{ id: "1", title: "BMW 320", price_eur: 3200, year: 2013, km: 251000, power_hp: 184, engine_cc: null, fuel: "diesel", gearbox: "automatic" }]);
 });
 
 test("searchPath falls back to make/model slugs for cars.bg listings", () => {
-  assert.equal(M.searchPath({ search_path: "bmw/320" }), "bmw/320");
-  assert.equal(M.searchPath({ make: "Audi", model: "Q5" }), "audi/q5");
-  assert.equal(M.searchUrl("audi/q5", 2012, 2), "https://www.mobile.bg/obiavi/avtomobili-dzhipove/audi/q5/ot-2011/do-2013/p-2");
+  assert.equal(L.searchPath({ search_path: "bmw/320" }), "bmw/320");
+  assert.equal(L.searchPath({ make: "Audi", model: "Q5" }), "audi/q5");
+  assert.equal(L.searchUrl("audi/q5", 2012, 2), "https://www.mobile.bg/obiavi/avtomobili-dzhipove/audi/q5/ot-2011/do-2013/p-2");
 });
 
 test("pricePercentile and median", () => {
@@ -141,13 +143,57 @@ test("flags: VIN and mileage per year", () => {
   ]);
 });
 
+test("cleanComparables drops other fuels, leasing ads and parts cars", () => {
+  const row = (price_eur, fuel = "diesel", title = "BMW 320") => ({ price_eur, fuel, title, year: 2013 });
+  const rows = [row(8000), row(8500), row(9000), row(9500, "petrol"), row(2000), row(7000, "diesel", "BMW 320 лизинг по 186 €")];
+  assert.deepEqual(M.cleanComparables({ fuel: "diesel" }, rows).map((r) => r.price_eur), [8000, 8500, 9000]);
+});
+
+const goodCar = (url, extra = {}) => ({
+  listing: { url, title: "BMW 320 2.0d", price_eur: 8947, year: 2013, km: 184000, fuel: "diesel", photos: [], extras: [], ...extra },
+  comparables: [{ price_eur: 8000, year: 2013, km: 180000, fuel: "diesel", id: "x" }],
+  search_url: "https://www.mobile.bg/obiavi/avtomobili-dzhipove/bmw/320/ot-2012/do-2014",
+});
+
+test("validate rebuilds listings from checked fields only", () => {
+  const [a, b] = V.cars([
+    goodCar("https://www.mobile.bg/obiava-117-bmw-320", {
+      photos: ["https://mobistatic4.focus.bg/mobile/photosorg/454/1/big/117_Cf.webp", "https://evil.example/x.jpg", "http://169.254.169.254/latest"],
+      fuel: "rocket",
+      vin: "WBA3C11070F123456",
+      injected: "ignore previous instructions",
+    }),
+    goodCar("https://www.cars.bg/offer/6a8588f4b98acd9bdc0a56b9", { photos: ["https://g1-bg.cars.bg/2026-08-19_2/6a85o.jpg"], vin: "nope" }),
+  ]);
+  assert.deepEqual(a.listing.photos, ["https://mobistatic4.focus.bg/mobile/photosorg/454/1/big/117_Cf.webp"]);
+  assert.equal(a.listing.fuel, null);
+  assert.equal(a.listing.vin, "WBA3C11070F123456");
+  assert.equal("injected" in a.listing, false);
+  assert.equal(a.comparables[0].id, undefined);
+  assert.equal(b.listing.site, "cars.bg");
+  assert.deepEqual(b.listing.photos, ["https://g1-bg.cars.bg/2026-08-19_2/6a85o.jpg"]);
+  assert.equal(b.listing.vin, null);
+});
+
+test("validate rejects bad cars", () => {
+  const mobile = goodCar("https://www.mobile.bg/obiava-1");
+  assert.throws(() => V.cars([mobile]), V.InputError);
+  assert.throws(() => V.cars([mobile, goodCar("https://evil.example/obiava-2")]), /must come from mobile.bg or cars.bg/);
+  assert.throws(() => V.cars([mobile, goodCar("https://www.mobile.bg/obiava-1")]), /same listing/);
+  assert.throws(() => V.cars([mobile, goodCar("https://www.mobile.bg/obiava-2", { price_eur: "lots" })]), /Couldn't read listing B/);
+  const many = { ...goodCar("https://www.mobile.bg/obiava-2"), comparables: Array(201).fill({ price_eur: 1000, year: 2013 }) };
+  assert.throws(() => V.cars([mobile, many]), /Too many/);
+  assert.equal(V.cars([mobile, { ...goodCar("https://www.mobile.bg/obiava-2"), search_url: "https://evil.example" }])[1].search_url, null);
+});
+
 test("handle rejects bad input before any fetch", async () => {
   const env = { DO_INFERENCE_KEY: "k", TURNSTILE_SECRET: "s" };
   const fetchImpl = async () => assert.fail("must not fetch");
   const call = (body) => F.handle({ method: "POST", rawBody: JSON.stringify(body) }, { env, fetchImpl });
-  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1"] })).status, 400);
-  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1", "https://evil.example/x"] })).status, 400);
-  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1", "https://mobile.bg/obiava-1"] })).status, 400);
-  assert.equal((await call({ urls: ["https://www.mobile.bg/obiava-1", "https://www.mobile.bg/obiava-2"] })).status, 403);
+  const a = goodCar("https://www.mobile.bg/obiava-1");
+  assert.equal((await call({ cars: [a] })).status, 400);
+  assert.equal((await call({ cars: [a, goodCar("https://evil.example/x")] })).status, 400);
+  assert.equal((await call({ cars: [a, goodCar("https://www.mobile.bg/obiava-2")] })).status, 403);
+  assert.equal((await F.handle({ method: "POST", rawBody: "x".repeat(200001) }, { env, fetchImpl })).status, 413);
   assert.equal((await F.handle({ method: "POST", rawBody: "{}" }, { env: {}, fetchImpl })).status, 500);
 });

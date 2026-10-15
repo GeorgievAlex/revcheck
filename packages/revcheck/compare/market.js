@@ -1,81 +1,12 @@
 "use strict";
-// Where a listing sits in the market. Comparables come from mobile.bg search
-// result cards (same make/model, year ±1), which already carry price, year,
-// km, power and gearbox, so one request yields ~20 rows. cars.bg listings are
-// matched against mobile.bg too: its search needs internal brand/model ids
-// that the listing page doesn't expose.
+// Where a listing sits in the market, from comparable mobile.bg listings the
+// visitor's browser collected (same make/model, year ±1): the percentile, the
+// range, and a TabPFN fair-price range trained on those rows.
 
-const { fetchText, text, parsePrice } = require("./listing.js");
-
-const MAX_PAGES = 3;
 const MIN_FOR_PERCENTILE = 5;
 const MIN_FOR_TABPFN = 15;
 const TABPFN_URL = "https://api.priorlabs.ai";
 const FEATURES = ["year", "km", "power_hp", "engine_cc", "fuel", "gearbox"];
-
-const slug = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-
-function searchPath(listing) {
-  if (listing.search_path) return listing.search_path;
-  const make = slug(listing.make);
-  const model = slug(listing.model);
-  return make && model ? `${make}/${model}` : null;
-}
-
-const searchUrl = (path, year, page) =>
-  `https://www.mobile.bg/obiavi/avtomobili-dzhipove/${path}/ot-${year - 1}/do-${year + 1}${page > 1 ? `/p-${page}` : ""}`;
-
-const MONTHS = /(януари|февруари|март|април|май|юни|юли|август|септември|октомври|ноември|декември)\s+((?:19|20)\d{2})/;
-
-function parseSearchCards(html) {
-  const cards = html.split(/<div class="item /).slice(1);
-  const rows = [];
-  for (const card of cards) {
-    const id = (card.match(/obiava-(\d+)/) || [])[1];
-    const price = parsePrice(text((card.match(/<div class="price[^"]*">\s*<div>([^<]+)<\/div>/) || [])[1]));
-    const spans = [...((card.match(/<div class="params">([\s\S]*?)<\/div>/) || [])[1] || "").matchAll(/<span>([^<]*)<\/span>/g)].map((m) => text(m[1]));
-    const find = (re) => spans.find((s) => re.test(s));
-    const num = (re) => {
-      const s = find(re);
-      return s ? Number(s.replace(/[^\d]/g, "")) || null : null;
-    };
-    const year = Number((find(MONTHS) || "").match(MONTHS)?.[2]) || null;
-    if (!id || !price || !year) continue;
-    const fuel = find(/Дизел|Бензин|Хибрид|Електр|Газ/);
-    rows.push({
-      id,
-      title: text((card.match(/class="title[^"]*">([^<]+)</) || [])[1]),
-      price_eur: price,
-      year,
-      km: num(/км$/),
-      power_hp: num(/к\.с\.$/),
-      engine_cc: num(/куб\.см$/),
-      fuel: fuel ? (/Дизел/.test(fuel) ? "diesel" : /Хибрид/.test(fuel) ? "hybrid" : /Електр/.test(fuel) ? "electric" : "petrol") : null,
-      gearbox: find(/Автоматична/) ? "automatic" : find(/Ръчна/) ? "manual" : null,
-    });
-  }
-  return rows;
-}
-
-async function findComparables(listing, fetchImpl) {
-  const path = searchPath(listing);
-  if (!path || !listing.year) return { search_url: null, rows: [] };
-  const pages = await Promise.all(
-    Array.from({ length: MAX_PAGES }, (_, i) => fetchText(searchUrl(path, listing.year, i + 1), fetchImpl).catch(() => "")),
-  );
-  const seen = new Set();
-  const ownId = (listing.url.match(/obiava-(\d+)/) || [])[1];
-  const rows = pages.flatMap(parseSearchCards).filter((r) => {
-    if (seen.has(r.id) || r.id === ownId) return false;
-    seen.add(r.id);
-    // Same fuel when both sides know it: a 320d and a 320i are different markets.
-    return !(listing.fuel && r.fuel && listing.fuel !== r.fuel);
-  });
-  // Leasing ads ("от 186 €/месец") and parts cars list far below the market.
-  const mid = median(rows.map((r) => r.price_eur));
-  const real = rows.filter((r) => r.price_eur >= mid * 0.35 && !/лизинг по|на части|за части/i.test(r.title));
-  return { search_url: searchUrl(path, listing.year, 1), rows: real };
-}
 
 // Share of comparables priced at or below this one, 0-100.
 function pricePercentile(price, prices) {
@@ -155,8 +86,16 @@ function quantileRow(prediction) {
   return p;
 }
 
-async function marketFor(listing, { fetchImpl, tabpfnKey }) {
-  const { search_url, rows } = await findComparables(listing, fetchImpl);
+// Same fuel when both sides know it (a 320d and a 320i are different
+// markets), and no leasing ads or parts cars, which list far below the market.
+function cleanComparables(listing, rows) {
+  const sameFuel = rows.filter((r) => !(listing.fuel && r.fuel && listing.fuel !== r.fuel));
+  const mid = median(sameFuel.map((r) => r.price_eur));
+  return sameFuel.filter((r) => r.price_eur >= mid * 0.35 && !/лизинг по|на части|за части/i.test(r.title || ""));
+}
+
+async function marketFor(listing, comparables, searchUrl, { fetchImpl, tabpfnKey }) {
+  const rows = cleanComparables(listing, comparables);
   const prices = rows.map((r) => r.price_eur);
   let fair = null;
   let fair_error = null;
@@ -166,7 +105,7 @@ async function marketFor(listing, { fetchImpl, tabpfnKey }) {
     fair_error = e.message;
   }
   return {
-    search_url,
+    search_url: searchUrl,
     comparables: rows.length,
     percentile: pricePercentile(listing.price_eur, prices),
     median_eur: median(prices),
@@ -177,4 +116,4 @@ async function marketFor(listing, { fetchImpl, tabpfnKey }) {
   };
 }
 
-module.exports = { searchPath, searchUrl, parseSearchCards, findComparables, pricePercentile, median, toCsv, quantileRow, fairPrice, marketFor };
+module.exports = { cleanComparables, pricePercentile, median, toCsv, quantileRow, fairPrice, marketFor };

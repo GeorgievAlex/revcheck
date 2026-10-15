@@ -1,20 +1,22 @@
 "use strict";
 // DigitalOcean Function: compares two used-car listings from mobile.bg or
-// cars.bg. For each car it reads the listing, has Gemma 4 (open-weight, on
-// DigitalOcean Serverless Inference) look at the photos, places the price
-// among similar mobile.bg listings, and asks TabPFN for a fair price range.
-// Gemma then writes the verdict.
+// cars.bg. The visitor's browser reads the listings and comparable mobile.bg
+// search results (both sites refuse cloud servers) and sends them here. For
+// each car, Gemma 4 (open-weight, on DigitalOcean Serverless Inference) looks
+// at the photos, the price is placed among the comparables, and TabPFN gives
+// a fair price range. Gemma then writes the verdict.
 //
 // Environment (project.yml): DO_INFERENCE_KEY, TURNSTILE_SECRET and
 // TABPFN_KEY (secrets, from .env), MODEL, ALLOWED_ORIGIN, TURNSTILE_HOSTNAME.
 // Without TABPFN_KEY the fair-price range is skipped; everything else works.
 
-const { siteOf, loadListing } = require("./listing.js");
+const { cars, InputError } = require("./validate.js");
 const { marketFor } = require("./market.js");
 
 const INFERENCE_URL = "https://inference.do-ai.run/v1/chat/completions";
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const LANGS = { en: "English", bg: "Bulgarian" };
+const MAX_BODY = 200000;
 
 const VISION_PROMPT = `You inspect the photos of a used-car listing for a buyer in Bulgaria.
 
@@ -109,11 +111,10 @@ function flags(listing, now = Date.now()) {
   return out;
 }
 
-async function analyzeOne(url, lang, env, fetchImpl) {
-  const listing = await loadListing(url, fetchImpl);
+async function analyzeOne({ listing, comparables, search_url }, lang, env, fetchImpl) {
   const [vision, market] = await Promise.all([
     inspectPhotos(listing, lang, env, fetchImpl).catch(() => null),
-    marketFor(listing, { fetchImpl, tabpfnKey: env.TABPFN_KEY }).catch(() => null),
+    marketFor(listing, comparables, search_url, { fetchImpl, tabpfnKey: env.TABPFN_KEY }).catch(() => null),
   ]);
   return { listing, vision, market, flags: flags(listing) };
 }
@@ -157,13 +158,10 @@ async function verifyTurnstile(token, ip, env, fetchImpl) {
   return null;
 }
 
-// Everything after the request checks. Exported so scripts/try-compare.mjs
-// can run it locally without a Turnstile token.
-async function compare(urls, lang, env, fetchImpl) {
-  const settled = await Promise.allSettled(urls.map((u) => analyzeOne(u, lang, env, fetchImpl)));
-  const bad = settled.findIndex((s) => s.status === "rejected");
-  if (bad !== -1) return fail(502, `Couldn't read listing ${bad === 0 ? "A" : "B"}: ${settled[bad].reason.message}.`);
-  const [a, b] = settled.map((s) => s.value);
+// Everything after the request checks, on already-validated cars. Exported
+// so scripts/try-compare.mjs can run it locally without a Turnstile token.
+async function compare(checked, lang, env, fetchImpl) {
+  const [a, b] = await Promise.all(checked.map((c) => analyzeOne(c, lang, env, fetchImpl)));
   let summary = null;
   try {
     summary = await verdict(a, b, lang, env, fetchImpl);
@@ -174,27 +172,29 @@ async function compare(urls, lang, env, fetchImpl) {
 }
 
 async function handle({ method, rawBody, ip = "" }, { env, fetchImpl }) {
-  if (method !== "POST") return fail(405, "POST a JSON body with two listing URLs.");
+  if (method !== "POST") return fail(405, "POST a JSON body with two listings.");
   if (!env.DO_INFERENCE_KEY) return fail(500, "The function is missing its DO_INFERENCE_KEY.");
   if (!env.TURNSTILE_SECRET) return fail(500, "The function is missing its TURNSTILE_SECRET.");
+  if (rawBody.length > MAX_BODY) return fail(413, "Request is too large.");
   let input;
   try {
     input = JSON.parse(rawBody);
   } catch {
     return fail(400, "Body must be valid JSON.");
   }
-  const urls = Array.isArray(input && input.urls) ? input.urls.slice(0, 3) : [];
-  if (urls.length !== 2) return fail(400, "Send exactly two listing URLs.");
-  for (const [i, u] of urls.entries()) {
-    if (typeof u !== "string" || u.length > 300 || !siteOf(u)) return fail(400, `Listing ${i === 0 ? "A" : "B"} must be a mobile.bg or cars.bg listing link.`);
+  let checked;
+  try {
+    checked = cars(input && input.cars);
+  } catch (e) {
+    if (e instanceof InputError) return fail(400, e.message);
+    throw e;
   }
-  if (siteOf(urls[0]).url === siteOf(urls[1]).url) return fail(400, "Those are the same listing. Paste two different cars.");
   const lang = input.lang === "bg" ? "bg" : "en";
   const token = typeof input.turnstile === "string" ? input.turnstile : "";
   if (!token || token.length > 2048) return fail(403, "Tick the \"I'm human\" box first.");
   const rejected = await verifyTurnstile(token, ip, env, fetchImpl);
   if (rejected) return rejected;
-  return compare(urls, lang, env, fetchImpl);
+  return compare(checked, lang, env, fetchImpl);
 }
 
 function decodeBody(args) {
