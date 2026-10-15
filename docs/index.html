@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>RevCheck: which car is the better buy?</title>
-  <meta name="description" content="Paste two used-car listings from mobile.bg or cars.bg. Open-weight AI checks the photos, the price against the market and the red flags, then tells you which one to go see.">
+  <meta name="description" content="Paste two used-car listings from mobile.bg or cars.bg. Open-weight AI checks every photo, the engine&#39;s known weak spots and the price against the market, then tells you which one to go see.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="style.css?v=a86fa48-mv9ibb4n">
+  <link rel="stylesheet" href="style.css?v=c15874c-mv9ibuax">
   <script>try { if (localStorage.getItem("revcheck-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}</script></head>
 <body>
   <header class="site">
@@ -22,7 +22,7 @@
   <main class="wide">
     <section class="intro">
       <h1 data-i18n="h1">Two listings. Which one is the better buy?</h1>
-      <p data-i18n="lede">Paste two used-car listings from mobile.bg or cars.bg. Gemma 4, an open-weight model, looks at the photos for damage and equipment. The price is checked against similar cars for sale, with a fair-price range from TabPFN. Then you get a verdict and what to ask the seller.</p>
+      <p data-i18n="lede">Paste two used-car listings from mobile.bg or cars.bg. Gemma 4 looks at every photo for damage and equipment, DeepSeek V4 flags the known weak spots of each engine, and TabPFN works out a fair price from similar cars for sale. Then you get a verdict and what to ask the seller. All open-weight models.</p>
     </section>
 
     <form id="compare-form" class="panel">
@@ -44,9 +44,9 @@
     </section>
   </main>
   <footer class="site">
-    <p data-i18n="footer">The two links are sent to a DigitalOcean Function. It reads the public listings through a small Cloudflare Worker, sends the photos to Gemma 4 on DigitalOcean Serverless Inference and the price data to TabPFN. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
+    <p data-i18n="footer">The two links go to a DigitalOcean Function, which reads the public listings through a small Cloudflare Worker. Gemma 4 and DeepSeek V4 run on DigitalOcean Serverless Inference, TabPFN on Prior Labs. Nothing is stored. Treat the result as a second opinion, not an inspection.</p>
     <p><a href="https://github.com/GeorgievAlex/revcheck">Source</a></p>
   </footer>
-  <script type="module" src="app.js?v=a86fa48-mv9ibb4n"></script>
+  <script type="module" src="app.js?v=c15874c-mv9ibuax"></script>
 </body>
 </html>

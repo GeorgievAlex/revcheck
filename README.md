@@ -2,6 +2,8 @@
 
 The pre-purchase check from the RevSofia family. Paste two used-car listings from **mobile.bg** or **cars.bg** and get a side-by-side report and a verdict on which one is the better buy.
 
+Built from scratch on 15–18 October 2026 for the [DEV Hacktoberfest Open-Source AI Challenge, Week 2: Side Hustle](https://dev.to/challenges/hacktoberfest-week2-2026-10-12).
+
 **Site:** https://georgievalex.github.io/revcheck/
 
 ## How the listings are read
@@ -67,3 +69,15 @@ Reader Worker (from `cloudflare/reader/`):
 npx wrangler deploy
 npx wrangler secret put READER_SECRET   # same value as READER_SECRET in .env
 ```
+
+## Credits
+
+- The page theme, the dark/light toggle (`docs/theme.js`, the base of `docs/style.css`) and the Turnstile + DigitalOcean Function pattern come from my earlier project [RevSofia](https://github.com/GeorgievAlex/revsofia), reused and extended here.
+- Open-weight models: [Gemma 4](https://ai.google.dev/gemma) (Google) and [DeepSeek V4](https://github.com/deepseek-ai), both served by DigitalOcean Serverless Inference. Tabular model: [TabPFN](https://priorlabs.ai) by Prior Labs.
+- Listings and photos belong to their sellers on mobile.bg and cars.bg. RevCheck only reads public pages when a visitor asks, and stores nothing.
+
+## Changes after the challenge deadline
+
+The challenge closed on 18 October 2026, 23:59 PDT. Any commit after that is listed here.
+
+- None yet.
