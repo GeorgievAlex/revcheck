@@ -4,7 +4,8 @@ The pre-purchase check from the RevSofia family. Paste two used-car listings fro
 
 Built from scratch on 15–18 October 2026 for the [DEV Hacktoberfest Open-Source AI Challenge, Week 2: Side Hustle](https://dev.to/challenges/hacktoberfest-week2-2026-10-12).
 
-**Site:** https://georgievalex.github.io/revcheck/
+**Site:** https://georgievalex.github.io/revcheck/  
+**Write-up on DEV:** https://dev.to/alexgeorgiev17/revcheck-paste-two-used-car-listings-get-a-second-opinion-before-you-drive-across-town-1e7e
 
 ## How the listings are read
 
